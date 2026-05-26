@@ -9,8 +9,8 @@ Plataforma web para organizar swipes DTC: advertorials, quizzes, páginas de ven
 - TailwindCSS
 - Lucide Icons
 - Framer Motion
-- Playwright para screenshot público
 - Cheerio para Open Graph/metadata
+- Fallback manual/OG image para screenshots em Cloudflare Workers
 - Supabase preparado para Auth, Postgres, RLS e Storage
 
 ## Rodar localmente
@@ -29,7 +29,20 @@ No MVP local, o login aceita qualquer e-mail/senha e salva dados no `localStorag
 ```bash
 npm run lint
 npm run build
+npm run preview
 ```
+
+## Deploy Cloudflare
+
+O projeto está preparado para Cloudflare Workers via OpenNext.
+
+No painel da Cloudflare, use:
+
+```bash
+npm run deploy
+```
+
+O comando roda `opennextjs-cloudflare build` antes do deploy. Evite usar `npx wrangler deploy` como comando principal em um checkout limpo, porque ele pode tentar migrar o projeto automaticamente durante o build.
 
 ## Captura de URL
 
@@ -39,7 +52,7 @@ A rota `POST /api/capture` recebe:
 { "url": "https://example.com" }
 ```
 
-Ela valida a URL, busca metadata Open Graph/HTML e tenta capturar screenshot com Playwright em viewport `1440x1200`. No modo local, screenshots são salvos em `public/captures`.
+Ela valida a URL e busca metadata Open Graph/HTML. Em Cloudflare Workers, browser headless/Playwright não é suportado diretamente, então a rota usa a imagem Open Graph como preview e permite upload manual de screenshot.
 
 ## Supabase
 

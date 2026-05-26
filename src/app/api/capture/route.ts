@@ -1,10 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import * as cheerio from "cheerio";
-import { chromium } from "playwright";
 import { z } from "zod";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({
@@ -23,15 +19,13 @@ export async function POST(request: Request) {
   }
 
   const metadata = await fetchMetadata(url);
-  const screenshot = await captureScreenshot(url).catch((error: Error) => ({
-    screenshotUrl: "",
-    screenshotError: error.message,
-  }));
 
   return Response.json({
     url,
     ...metadata,
-    ...screenshot,
+    screenshotUrl: metadata.image,
+    screenshotError:
+      "Screenshot automático com Playwright fica desativado no deploy Cloudflare Workers. Use a imagem Open Graph ou envie um screenshot manual.",
   });
 }
 
@@ -72,23 +66,6 @@ async function fetchMetadata(url: string) {
     };
   } catch {
     return { title: "", description: "", image: "", siteName: "" };
-  }
-}
-
-async function captureScreenshot(url: string) {
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
-    await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => undefined);
-    const buffer = await page.screenshot({ fullPage: false, type: "png" });
-    const dir = path.join(process.cwd(), "public", "captures");
-    await mkdir(dir, { recursive: true });
-    const fileName = `capture-${Date.now()}.png`;
-    await writeFile(path.join(dir, fileName), buffer);
-    return { screenshotUrl: `/captures/${fileName}`, screenshotError: "" };
-  } finally {
-    await browser.close();
   }
 }
 

@@ -1540,7 +1540,7 @@ function SettingsView() {
           ["Supabase Auth", "Conecte as variáveis públicas e ative e-mail/senha no projeto."],
           ["Supabase Storage", "Bucket `swipe-screenshots` para capturas e uploads manuais."],
           ["RLS", "Políticas SQL prontas em `supabase/schema.sql` para isolamento por usuário."],
-          ["Captura Playwright", "Rota `/api/capture` valida URL, busca Open Graph e tenta screenshot público."],
+          ["Captura de preview", "Rota `/api/capture` valida URL, busca Open Graph e tenta screenshot público."],
         ].map(([title, description]) => (
           <div key={title} className="rounded-xl border border-white/10 bg-[#111827] p-5">
             <ShieldCheck className="mb-4 h-5 w-5 text-emerald-300" />
