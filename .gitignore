@@ -23,6 +23,9 @@
 # misc
 .DS_Store
 *.pem
+preview-*.png
+.agents/
+skills-lock.json
 
 # debug
 npm-debug.log*

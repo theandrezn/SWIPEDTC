@@ -1,26 +1,99 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg-main: #030716;
+  --bg-deep: #050b1d;
+  --bg-card: #081327;
+  --bg-card-soft: #0b1730;
+  --border-blue: #1a2d55;
+  --purple-main: #6d3bff;
+  --purple-neon: #8b5cff;
+  --purple-glow: #a855f7;
+  --blue-main: #2563ff;
+  --blue-neon: #1e5bff;
+  --cyan-detail: #22d3ee;
+  --glow-purple-blue: 0 0 40px rgba(109, 59, 255, 0.25), 0 0 80px rgba(37, 99, 255, 0.18);
+  --app-gradient: radial-gradient(circle at 70% 20%, rgba(109, 59, 255, 0.28), transparent 35%),
+    radial-gradient(circle at 45% 90%, rgba(37, 99, 255, 0.22), transparent 40%),
+    linear-gradient(135deg, #030716 0%, #050b1d 45%, #090b2a 100%);
+  --background: var(--bg-main);
+  --foreground: #f8fafc;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-poppins);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  background: var(--app-gradient);
+  background-attachment: fixed;
+  color: var(--foreground);
+  font-family: var(--font-poppins), Poppins, Inter, system-ui, sans-serif;
+  text-rendering: geometricPrecision;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a,
+button,
+input,
+select,
+textarea {
+  transition-duration: 180ms;
+  transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1a2d55;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+  background: #030716;
+}
+
+.app-gradient {
+  background:
+    radial-gradient(circle at 70% 20%, rgba(109, 59, 255, 0.28), transparent 35%),
+    radial-gradient(circle at 45% 90%, rgba(37, 99, 255, 0.22), transparent 40%),
+    linear-gradient(135deg, #030716 0%, #050b1d 45%, #090b2a 100%);
+}
+
+.neon-surface {
+  border: 1px solid rgba(139, 92, 255, 0.35);
+  background: rgba(8, 19, 39, 0.88);
+  box-shadow: 0 0 40px rgba(109, 59, 255, 0.16), 0 0 80px rgba(37, 99, 255, 0.1);
 }
