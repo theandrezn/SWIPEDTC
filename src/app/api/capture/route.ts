@@ -1,4 +1,7 @@
 import * as cheerio from "cheerio";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import puppeteer from "@cloudflare/puppeteer";
+import type { BrowserWorker } from "@cloudflare/puppeteer";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -19,13 +22,15 @@ export async function POST(request: Request) {
   }
 
   const metadata = await fetchMetadata(url);
+  const screenshot = await captureScreenshot(url).catch((error: Error) => ({
+    screenshotUrl: metadata.image,
+    screenshotError: error.message,
+  }));
 
   return Response.json({
     url,
     ...metadata,
-    screenshotUrl: metadata.image,
-    screenshotError:
-      "Screenshot automático com Playwright fica desativado no deploy Cloudflare Workers. Use a imagem Open Graph ou envie um screenshot manual.",
+    ...screenshot,
   });
 }
 
@@ -67,6 +72,72 @@ async function fetchMetadata(url: string) {
   } catch {
     return { title: "", description: "", image: "", siteName: "" };
   }
+}
+
+async function captureScreenshot(url: string) {
+  const browserBinding = await getBrowserBinding();
+
+  if (browserBinding) {
+    return captureWithCloudflareBrowser(url, browserBinding);
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    return captureWithLocalPlaywright(url);
+  }
+
+  throw new Error("Browser Rendering não está configurado. Configure o binding BROWSER no Cloudflare ou use screenshot manual.");
+}
+
+async function getBrowserBinding() {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return (env as CloudflareEnv & { BROWSER?: BrowserWorker }).BROWSER ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function captureWithCloudflareBrowser(url: string, browserBinding: BrowserWorker) {
+  const browser = await puppeteer.launch(browserBinding);
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1440, height: 1200, deviceScaleFactor: 1 });
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    );
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+    const screenshot = await page.screenshot({ type: "jpeg", quality: 78, fullPage: false, encoding: "base64" });
+    return { screenshotUrl: `data:image/jpeg;base64,${screenshot}`, screenshotError: "" };
+  } finally {
+    await browser.close();
+  }
+}
+
+async function captureWithLocalPlaywright(url: string) {
+  const [{ mkdir, writeFile }, path, playwright] = await Promise.all([
+    import("node:fs/promises"),
+    import("node:path"),
+    importOptionalPlaywright(),
+  ]);
+  const browser = await playwright.chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => undefined);
+    const buffer = await page.screenshot({ fullPage: false, type: "jpeg", quality: 78 });
+    const dir = path.join(process.cwd(), "public", "captures");
+    await mkdir(dir, { recursive: true });
+    const fileName = `capture-${Date.now()}.jpg`;
+    await writeFile(path.join(dir, fileName), buffer);
+    return { screenshotUrl: `/captures/${fileName}`, screenshotError: "" };
+  } finally {
+    await browser.close();
+  }
+}
+
+async function importOptionalPlaywright() {
+  const importer = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<typeof import("playwright")>;
+  return importer("playwright");
 }
 
 function absoluteUrl(value: string, base: string) {

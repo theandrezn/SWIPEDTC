@@ -1113,9 +1113,9 @@ function SwipeDetail({
           </div>
           <div className="space-y-3 p-4">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-white">{draft.title}</h2>
-                <a className="mt-1 block truncate text-xs text-blue-300" href={draft.url} target="_blank" rel="noreferrer">
+              <div className="min-w-0 flex-1">
+                <h2 className="break-words text-lg font-semibold text-white">{draft.title}</h2>
+                <a className="mt-1 block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs text-blue-300" href={draft.url} target="_blank" rel="noreferrer">
                   {draft.url}
                 </a>
               </div>
@@ -1294,7 +1294,7 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
     rating: 3,
     isFavorite: false,
   });
-  const [preview, setPreview] = useState<{ title?: string; description?: string; image?: string; screenshotUrl?: string; error?: string } | null>(null);
+  const [preview, setPreview] = useState<{ title?: string; description?: string; image?: string; screenshotUrl?: string; screenshotError?: string; error?: string } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   if (!open) return null;
@@ -1425,26 +1425,31 @@ function ScreenshotPreview({
   preview,
   screenshotUrl,
 }: {
-  preview: { title?: string; description?: string; image?: string; screenshotUrl?: string; error?: string } | null;
+  preview: { title?: string; description?: string; image?: string; screenshotUrl?: string; screenshotError?: string; error?: string } | null;
   screenshotUrl: string;
 }) {
+  const [failedImage, setFailedImage] = useState("");
   const image = screenshotUrl || preview?.screenshotUrl || preview?.image;
+  const imageFailed = Boolean(image && failedImage === image);
   return (
     <div className="rounded-xl border border-white/10 bg-[#0b0f17] p-4">
       <p className="mb-3 text-sm font-medium text-white">Preview</p>
       <div className="aspect-[16/11] overflow-hidden rounded-lg bg-[#111827]">
-        {image ? (
+        {image && !imageFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt="" className="h-full w-full object-cover" />
+          <img src={image} alt="" className="h-full w-full object-cover" onError={() => setFailedImage(image)} />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-500">
             <Upload className="h-8 w-8" />
-            <span className="text-xs">Cole uma URL e capture o preview.</span>
+            <span className="max-w-56 text-center text-xs">
+              {imageFailed ? "A imagem retornada pelo site falhou. Envie um screenshot manual ou tente outra URL." : "Cole uma URL e capture o preview."}
+            </span>
           </div>
         )}
       </div>
       {preview?.title && <p className="mt-3 text-sm font-medium text-white">{preview.title}</p>}
       {preview?.description && <p className="mt-1 line-clamp-3 text-xs text-slate-400">{preview.description}</p>}
+      {preview?.screenshotError && <p className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/10 p-3 text-xs text-amber-100">{preview.screenshotError}</p>}
       {preview?.error && <p className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/10 p-3 text-xs text-amber-100">{preview.error}</p>}
     </div>
   );

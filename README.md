@@ -10,7 +10,8 @@ Plataforma web para organizar swipes DTC: advertorials, quizzes, páginas de ven
 - Lucide Icons
 - Framer Motion
 - Cheerio para Open Graph/metadata
-- Fallback manual/OG image para screenshots em Cloudflare Workers
+- Captura real de screenshots via Cloudflare Browser Rendering
+- Fallback manual/OG image quando o site bloqueia captura
 - Supabase preparado para Auth, Postgres, RLS e Storage
 
 ## Rodar localmente
@@ -52,7 +53,7 @@ A rota `POST /api/capture` recebe:
 { "url": "https://example.com" }
 ```
 
-Ela valida a URL e busca metadata Open Graph/HTML. Em Cloudflare Workers, browser headless/Playwright não é suportado diretamente, então a rota usa a imagem Open Graph como preview e permite upload manual de screenshot.
+Ela valida a URL, busca metadata Open Graph/HTML e tenta capturar screenshot real com Cloudflare Browser Rendering. O `wrangler.jsonc` já inclui o binding `BROWSER`; no painel da Cloudflare, habilite Browser Rendering para o Worker. Se o site bloquear captura, a rota usa a imagem Open Graph como fallback e permite upload manual de screenshot.
 
 ## Supabase
 
