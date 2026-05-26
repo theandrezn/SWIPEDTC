@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import type { FormEvent } from "react";
 import {
   BarChart3,
   Bell,
@@ -54,6 +55,7 @@ import {
   swipeTypes,
   trafficSources,
 } from "@/lib/mock-data";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { Collection, Funnel, Swipe, SwipeStatus, SwipeType, ViewMode } from "@/lib/types";
 import { cn, formatDate, safeUrl, uid } from "@/lib/utils";
 
@@ -162,6 +164,14 @@ export default function Home() {
       });
     }
     queueMicrotask(() => setIsAuthenticated(auth === "true"));
+    if (supabase) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session) {
+          window.localStorage.setItem("dtc-swipe-hub-auth", "true");
+          setIsAuthenticated(true);
+        }
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -289,6 +299,7 @@ export default function Home() {
         onClose={() => setSidebarOpen(false)}
         onLogout={() => {
           window.localStorage.removeItem("dtc-swipe-hub-auth");
+          void supabase?.auth.signOut();
           setIsAuthenticated(false);
         }}
       />
@@ -413,6 +424,44 @@ export default function Home() {
 }
 
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("demo@dtcswipehub.com");
+  const [password, setPassword] = useState("demo1234");
+  const [authMessage, setAuthMessage] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+
+  async function handleAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthMessage("");
+
+    if (!isSupabaseConfigured || !supabase) {
+      onLogin();
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      const result =
+        authMode === "signup"
+          ? await supabase.auth.signUp({ email, password })
+          : await supabase.auth.signInWithPassword({ email, password });
+
+      if (result.error) {
+        setAuthMessage(result.error.message);
+        return;
+      }
+
+      if (authMode === "signup" && !result.data.session) {
+        setAuthMessage("Conta criada. Verifique seu e-mail para confirmar o acesso.");
+        return;
+      }
+
+      onLogin();
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
   return (
     <main className="app-gradient grid min-h-screen lg:grid-cols-[1.1fr_0.9fr]">
       <section className="flex flex-col justify-between overflow-hidden border-r border-white/10 p-8 lg:p-12">
@@ -424,10 +473,10 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         </div>
         <div className="max-w-3xl py-16">
           <h1 className="text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl">
-            Centralize seus melhores swipes DTC em um só lugar
+            Centralize seus melhores swipes DTC em um s? lugar
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-            Organize advertorials, quizzes, páginas de venda, criativos, bibliotecas de anúncios e funis completos com análise estratégica.
+            Organize advertorials, quizzes, p?ginas de venda, criativos, bibliotecas de an?ncios e funis completos com an?lise estrat?gica.
           </p>
           <div className="mt-10 grid max-w-4xl gap-3 sm:grid-cols-3">
             {["Captura por URL", "Copy analysis", "Funis conectados"].map((item) => (
@@ -441,21 +490,36 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         <p className="text-xs text-slate-500">MVP local com estrutura pronta para Supabase Auth, RLS e Storage.</p>
       </section>
       <section className="flex items-center justify-center p-6">
-        <form
-          className="w-full max-w-md rounded-xl border border-white/10 bg-[#111827]/90 p-6 shadow-2xl"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onLogin();
-          }}
-        >
-          <h2 className="text-2xl font-semibold text-white">Entrar</h2>
-          <p className="mt-2 text-sm text-slate-400">Use qualquer e-mail e senha para testar o MVP local.</p>
+        <form className="w-full max-w-md rounded-xl border border-white/10 bg-[#111827]/90 p-6 shadow-2xl" onSubmit={handleAuth}>
+          <h2 className="text-2xl font-semibold text-white">{authMode === "signin" ? "Entrar" : "Criar conta"}</h2>
+          <p className="mt-2 text-sm text-slate-400">
+            {isSupabaseConfigured
+              ? "Acesse sua biblioteca com Supabase Auth."
+              : "Modo demo local ativo enquanto as vari?veis do Supabase n?o est?o configuradas."}
+          </p>
+          <div className="mt-5 grid grid-cols-2 rounded-lg border border-[#1a2d55] bg-[#050b1d] p-1">
+            <button
+              type="button"
+              onClick={() => setAuthMode("signin")}
+              className={cn("h-9 rounded-md text-sm font-semibold transition", authMode === "signin" ? "bg-[#2563ff] text-white" : "text-slate-400 hover:text-white")}
+            >
+              Entrar
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthMode("signup")}
+              className={cn("h-9 rounded-md text-sm font-semibold transition", authMode === "signup" ? "bg-[#2563ff] text-white" : "text-slate-400 hover:text-white")}
+            >
+              Criar conta
+            </button>
+          </div>
           <label className="mt-6 block text-sm text-slate-300">
             E-mail
             <input
               required
               type="email"
-              defaultValue="demo@dtcswipehub.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
               className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-[#0b0f17] px-3 text-sm outline-none ring-blue-500/0 transition focus:ring-2"
             />
           </label>
@@ -464,15 +528,31 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
             <input
               required
               type="password"
-              defaultValue="demo1234"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              minLength={6}
               className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-[#0b0f17] px-3 text-sm outline-none ring-blue-500/0 transition focus:ring-2"
             />
           </label>
-          <button className="mt-6 h-11 w-full rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 text-sm font-semibold text-white shadow-lg shadow-blue-950/40">
-            Entrar no Hub
+          <button
+            disabled={authLoading}
+            className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 text-sm font-semibold text-white shadow-lg shadow-blue-950/40 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {authLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {authMode === "signin" ? "Entrar no Hub" : "Criar conta"}
           </button>
-          <div className="mt-5 rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3 text-xs leading-5 text-emerald-100">
-            Autenticação real: conecte `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+          <div
+            className={cn(
+              "mt-5 rounded-lg border p-3 text-xs leading-5",
+              isSupabaseConfigured
+                ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-100"
+                : "border-amber-400/25 bg-amber-400/10 text-amber-100",
+            )}
+          >
+            {authMessage ||
+              (isSupabaseConfigured
+                ? "Supabase Auth conectado. Voc? pode entrar ou criar conta."
+                : "Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para ativar cadastro real.")}
           </div>
         </form>
       </section>

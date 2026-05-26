@@ -59,15 +59,17 @@ Ela valida a URL e busca metadata Open Graph/HTML. Em Cloudflare Workers, browse
 1. Crie um projeto Supabase.
 2. Rode o SQL em `supabase/schema.sql`.
 3. Crie um bucket de Storage chamado `swipe-screenshots`.
-4. Configure as variáveis:
+4. Configure as variáveis no `.env.local` para desenvolvimento e também nas variáveis de ambiente do Cloudflare:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_URL=https://rbsrgfaqmpoidudpsqyd.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 ```
 
 O schema inclui RLS para isolar dados por usuário.
+
+Para cadastro real funcionar no deploy, `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` precisam estar disponíveis no build da Cloudflare. A conexão MCP do Codex não injeta essas variáveis no navegador.
 
 ## MVP implementado
 
