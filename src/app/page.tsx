@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import type { FormEvent } from "react";
+import type { User } from "@supabase/supabase-js";
 import {
   Bell,
   BookOpen,
@@ -117,6 +118,141 @@ const defaultFilters: Filters = {
 
 const storageVersion = "dtc-swipe-hub-empty-account-v1";
 
+type SwipeRow = {
+  id: string;
+  title: string;
+  url: string;
+  type: string;
+  niche: string | null;
+  subniche: string | null;
+  geo: string | null;
+  language: string | null;
+  traffic_source: string | null;
+  platform: string | null;
+  brand: string | null;
+  product: string | null;
+  price: string | null;
+  status: string;
+  rating: number;
+  is_favorite: boolean;
+  screenshot_url: string | null;
+  og_title: string | null;
+  og_description: string | null;
+  og_image: string | null;
+  ad_library_url: string | null;
+  creative_url: string | null;
+  notes: string | null;
+  payload: Partial<Swipe> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type CollectionRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  cover_url: string | null;
+  payload: Partial<Collection> | null;
+  created_at: string;
+};
+
+function createRecordId(prefix: string) {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : uid(prefix);
+}
+
+function swipeFromRow(row: SwipeRow): Swipe {
+  const payload = row.payload ?? {};
+  return {
+    id: row.id,
+    title: row.title,
+    url: row.url,
+    type: row.type as SwipeType,
+    niche: row.niche ?? "",
+    subniche: row.subniche ?? "",
+    geo: row.geo ?? "",
+    language: row.language ?? "",
+    trafficSource: row.traffic_source ?? "",
+    platform: row.platform ?? "",
+    brand: row.brand ?? "",
+    product: row.product ?? "",
+    price: row.price ?? "",
+    status: row.status as SwipeStatus,
+    rating: row.rating,
+    isFavorite: row.is_favorite,
+    screenshotUrl: row.screenshot_url ?? "",
+    ogTitle: row.og_title ?? "",
+    ogDescription: row.og_description ?? "",
+    ogImage: row.og_image ?? "",
+    adLibraryUrl: row.ad_library_url ?? "",
+    creativeUrl: row.creative_url ?? "",
+    notes: row.notes ?? "",
+    tags: Array.isArray(payload.tags) ? payload.tags : [],
+    createdAt: payload.createdAt ?? row.created_at,
+    updatedAt: row.updated_at,
+    lastSeenAt: payload.lastSeenAt ?? row.updated_at ?? row.created_at,
+    analysis: { ...emptyAnalysis, ...(payload.analysis ?? {}) },
+    features: { ...emptyFeatures, ...(payload.features ?? {}) },
+    metrics: { ...emptyMetrics, ...(payload.metrics ?? {}) },
+  };
+}
+
+function collectionFromRow(row: CollectionRow): Collection {
+  const payload = row.payload ?? {};
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? "",
+    coverUrl: row.cover_url ?? "",
+    tags: Array.isArray(payload.tags) ? payload.tags : [],
+    swipeIds: Array.isArray(payload.swipeIds) ? payload.swipeIds : [],
+    createdAt: payload.createdAt ?? row.created_at,
+  };
+}
+
+function swipeToRow(swipe: Swipe, userId: string) {
+  return {
+    id: swipe.id,
+    user_id: userId,
+    title: swipe.title,
+    url: swipe.url,
+    type: swipe.type,
+    niche: swipe.niche || null,
+    subniche: swipe.subniche || null,
+    geo: swipe.geo || null,
+    language: swipe.language || null,
+    traffic_source: swipe.trafficSource || null,
+    platform: swipe.platform || null,
+    brand: swipe.brand || null,
+    product: swipe.product || null,
+    price: swipe.price || null,
+    status: swipe.status,
+    rating: swipe.rating,
+    is_favorite: swipe.isFavorite,
+    screenshot_url: swipe.screenshotUrl || null,
+    og_title: swipe.ogTitle || null,
+    og_description: swipe.ogDescription || null,
+    og_image: swipe.ogImage || null,
+    ad_library_url: swipe.adLibraryUrl || null,
+    creative_url: swipe.creativeUrl || null,
+    notes: swipe.notes || null,
+    payload: swipe,
+    created_at: swipe.createdAt,
+    updated_at: swipe.updatedAt,
+  };
+}
+
+function collectionToRow(collection: Collection, userId: string) {
+  return {
+    id: collection.id,
+    user_id: userId,
+    name: collection.name,
+    description: collection.description || null,
+    cover_url: collection.coverUrl || null,
+    payload: collection,
+    created_at: collection.createdAt,
+  };
+}
+
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -132,34 +268,141 @@ export default function Home() {
   const [addOpen, setAddOpen] = useState(false);
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [toast, setToast] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  async function ensureUserProfile(user: User) {
+    if (!supabase) return;
+    await supabase.from("users").upsert({
+      id: user.id,
+      email: user.email ?? "",
+      name: user.user_metadata?.name ?? user.email?.split("@")[0] ?? "Usuário",
+      avatar_url: user.user_metadata?.avatar_url ?? null,
+    });
+  }
+
+  async function loadRemoteState(user: User) {
+    if (!supabase) return;
+    await ensureUserProfile(user);
+
+    const [swipeResult, collectionResult] = await Promise.all([
+      supabase.from("swipes").select("*").order("created_at", { ascending: false }),
+      supabase.from("collections").select("*").order("created_at", { ascending: false }),
+    ]);
+
+    if (swipeResult.error || collectionResult.error) {
+      console.error("Supabase sync error", swipeResult.error ?? collectionResult.error);
+      showToast("Não foi possível carregar seus dados do Supabase.");
+      return;
+    }
+
+    const remoteSwipes = ((swipeResult.data ?? []) as SwipeRow[]).map(swipeFromRow);
+    const remoteCollections = ((collectionResult.data ?? []) as CollectionRow[]).map(collectionFromRow);
+    setSwipes(remoteSwipes);
+    setCollections(remoteCollections);
+    setFunnels([]);
+    setSelectedSwipeId(remoteSwipes[0]?.id ?? null);
+  }
+
+  function syncSwipe(swipe: Swipe) {
+    if (!supabase || !currentUserId) return;
+    void supabase
+      .from("swipes")
+      .upsert(swipeToRow(swipe, currentUserId))
+      .then(({ error }) => {
+        if (error) {
+          console.error("Swipe sync error", error);
+          showToast("Não foi possível sincronizar o swipe.");
+        }
+      });
+  }
+
+  function removeRemoteSwipe(id: string) {
+    if (!supabase || !currentUserId) return;
+    void supabase
+      .from("swipes")
+      .delete()
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Swipe delete error", error);
+          showToast("Não foi possível remover o swipe no Supabase.");
+        }
+      });
+  }
+
+  function syncCollection(collection: Collection) {
+    if (!supabase || !currentUserId) return;
+    void supabase
+      .from("collections")
+      .upsert(collectionToRow(collection, currentUserId))
+      .then(({ error }) => {
+        if (error) {
+          console.error("Collection sync error", error);
+          showToast("Não foi possível sincronizar a coleção.");
+        }
+      });
+  }
 
   useEffect(() => {
-    const savedVersion = window.localStorage.getItem("dtc-swipe-hub-state-version");
-    const isCurrentState = savedVersion === storageVersion;
-    const saved = isCurrentState ? window.localStorage.getItem("dtc-swipe-hub-state") : null;
-    const auth = window.localStorage.getItem("dtc-swipe-hub-auth");
-    if (!isCurrentState) {
-      window.localStorage.removeItem("dtc-swipe-hub-state");
-      window.localStorage.setItem("dtc-swipe-hub-state-version", storageVersion);
-    }
-    if (saved) {
-      const parsed = JSON.parse(saved) as { swipes: Swipe[]; collections: Collection[]; funnels: Funnel[] };
-      queueMicrotask(() => {
+    let isMounted = true;
+
+    function hydrateLocalState() {
+      const savedVersion = window.localStorage.getItem("dtc-swipe-hub-state-version");
+      const isCurrentState = savedVersion === storageVersion;
+      const saved = isCurrentState ? window.localStorage.getItem("dtc-swipe-hub-state") : null;
+      const auth = window.localStorage.getItem("dtc-swipe-hub-auth");
+      if (!isCurrentState) {
+        window.localStorage.removeItem("dtc-swipe-hub-state");
+        window.localStorage.setItem("dtc-swipe-hub-state-version", storageVersion);
+      }
+      if (saved) {
+        const parsed = JSON.parse(saved) as { swipes: Swipe[]; collections: Collection[]; funnels: Funnel[] };
         setSwipes(parsed.swipes);
         setCollections(parsed.collections);
         setFunnels(parsed.funnels);
         setSelectedSwipeId(parsed.swipes[0]?.id ?? null);
-      });
+      }
+      setIsAuthenticated(auth === "true");
     }
-    queueMicrotask(() => setIsAuthenticated(auth === "true"));
-    if (supabase) {
-      supabase.auth.getSession().then(({ data }) => {
-        if (data.session) {
-          window.localStorage.setItem("dtc-swipe-hub-auth", "true");
-          setIsAuthenticated(true);
-        }
-      });
+
+    if (!supabase) {
+      hydrateLocalState();
+      return;
     }
+
+    async function hydrateRemoteUser(user: User | null) {
+      if (!isMounted) return;
+      if (!user) {
+        window.localStorage.removeItem("dtc-swipe-hub-auth");
+        setCurrentUserId(null);
+        setIsAuthenticated(false);
+        setSwipes([]);
+        setCollections([]);
+        setFunnels([]);
+        setSelectedSwipeId(null);
+        return;
+      }
+
+      setCurrentUserId(user.id);
+      window.localStorage.setItem("dtc-swipe-hub-auth", "true");
+      await loadRemoteState(user);
+      if (isMounted) setIsAuthenticated(true);
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      void hydrateRemoteUser(data.session?.user ?? null);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      void hydrateRemoteUser(session?.user ?? null);
+    });
+
+    return () => {
+      isMounted = false;
+      listener.subscription.unsubscribe();
+    };
+    // loadRemoteState is intentionally called only during auth bootstrapping/listener events.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -239,7 +482,9 @@ export default function Home() {
   }
 
   function upsertSwipe(next: Swipe) {
-    setSwipes((current) => current.map((swipe) => (swipe.id === next.id ? next : swipe)));
+    const updated = { ...next, updatedAt: new Date().toISOString() };
+    setSwipes((current) => current.map((swipe) => (swipe.id === updated.id ? updated : swipe)));
+    syncSwipe(updated);
     showToast("AnÃ¡lise atualizada.");
   }
 
@@ -247,19 +492,28 @@ export default function Home() {
     setSwipes((current) => [swipe, ...current]);
     setSelectedSwipeId(swipe.id);
     setAddOpen(false);
+    syncSwipe(swipe);
     showToast("Swipe salvo com sucesso.");
   }
 
   function toggleFavorite(id: string) {
-    setSwipes((current) =>
-      current.map((swipe) => (swipe.id === id ? { ...swipe, isFavorite: !swipe.isFavorite } : swipe)),
-    );
+    setSwipes((current) => {
+      let changed: Swipe | null = null;
+      const next = current.map((swipe) => {
+        if (swipe.id !== id) return swipe;
+        changed = { ...swipe, isFavorite: !swipe.isFavorite, updatedAt: new Date().toISOString() };
+        return changed;
+      });
+      if (changed) syncSwipe(changed);
+      return next;
+    });
   }
 
   function deleteSwipe(id: string) {
     if (!window.confirm("Excluir este swipe? Esta aÃ§Ã£o nÃ£o pode ser desfeita.")) return;
     setSwipes((current) => current.filter((swipe) => swipe.id !== id));
-    setSelectedSwipeId(swipes[0]?.id ?? null);
+    removeRemoteSwipe(id);
+    setSelectedSwipeId(swipes.find((swipe) => swipe.id !== id)?.id ?? null);
     showToast("Swipe excluÃ­do.");
   }
 
@@ -287,6 +541,11 @@ export default function Home() {
         onLogout={() => {
           window.localStorage.removeItem("dtc-swipe-hub-auth");
           void supabase?.auth.signOut();
+          setCurrentUserId(null);
+          setSwipes([]);
+          setCollections([]);
+          setFunnels([]);
+          setSelectedSwipeId(null);
           setIsAuthenticated(false);
         }}
       />
@@ -372,6 +631,7 @@ export default function Home() {
         onSave={(collection) => {
           setCollections((current) => [collection, ...current]);
           setCollectionOpen(false);
+          syncCollection(collection);
           showToast("ColeÃ§Ã£o criada.");
         }}
       />
@@ -463,7 +723,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           <p className="mt-2 text-sm text-slate-400">
             {isSupabaseConfigured
               ? "Acesse sua biblioteca com Supabase Auth."
-              : "Modo demo local ativo enquanto as vari?veis do Supabase n?o est?o configuradas."}
+              : "Modo demo local ativo enquanto as variáveis do Supabase não estão configuradas."}
           </p>
           <div className="mt-5 grid grid-cols-2 rounded-lg border border-[#1a2d55] bg-[#050b1d] p-1">
             <button
@@ -519,7 +779,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           >
             {authMessage ||
               (isSupabaseConfigured
-                ? "Supabase Auth conectado. Voc? pode entrar ou criar conta."
+                ? "Supabase Auth conectado. Você pode entrar ou criar conta."
                 : "Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para ativar cadastro real.")}
           </div>
         </form>
@@ -1334,7 +1594,7 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
     }
     const now = new Date().toISOString();
     onSave({
-      id: uid("swipe"),
+      id: createRecordId("swipe"),
       title: form.title || preview?.title || "Novo Swipe",
       url,
       type: form.type,
@@ -1536,7 +1796,7 @@ function CollectionModal({
         <button
           onClick={() =>
             onSave({
-              id: uid("collection"),
+              id: createRecordId("collection"),
               name: name || "Nova coleÃ§Ã£o",
               description,
               coverUrl: swipes.find((swipe) => selected.includes(swipe.id))?.screenshotUrl || swipes[0]?.screenshotUrl || "",
