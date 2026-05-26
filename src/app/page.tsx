@@ -1,9 +1,8 @@
-"use client";
+﻿"use client";
 
 import { AnimatePresence, motion } from "framer-motion";
 import type { FormEvent } from "react";
 import {
-  BarChart3,
   Bell,
   BookOpen,
   Boxes,
@@ -12,7 +11,6 @@ import {
   ChevronDown,
   Copy,
   Crown,
-  Database,
   ExternalLink,
   Eye,
   FileText,
@@ -34,15 +32,11 @@ import {
   PenLine,
   Plus,
   Search,
-  Settings,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Star,
-  Tags,
   Trash2,
   Upload,
-  Workflow,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, useTransition } from "react";
@@ -52,7 +46,6 @@ import {
   emptyMetrics,
   geos,
   niches,
-  swipeTypes,
   trafficSources,
 } from "@/lib/mock-data";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -61,20 +54,16 @@ import { cn, formatDate, safeUrl, uid } from "@/lib/utils";
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "swipes", label: "Swipes", icon: Boxes },
   { id: "Advertorial", label: "Advertorials", icon: FileText },
   { id: "Quiz", label: "Quizzes", icon: Gauge },
-  { id: "Pagina de Venda", label: "Páginas de Venda", icon: BookOpen },
-  { id: "Landing Page", label: "Landing Pages", icon: LayoutDashboard },
+  { id: "Pagina de Venda", label: "PÃ¡ginas de Venda", icon: BookOpen },
   { id: "Criativo", label: "Criativos", icon: ImagePlus },
-  { id: "Biblioteca de Anuncios", label: "Bibliotecas de Anúncios", icon: Database },
-  { id: "funnels", label: "Funis", icon: Workflow },
-  { id: "collections", label: "Coleções", icon: Folder },
-  { id: "favorites", label: "Favoritos", icon: Heart },
-  { id: "tags", label: "Tags", icon: Tags },
-  { id: "reports", label: "Relatórios", icon: BarChart3 },
-  { id: "settings", label: "Configurações", icon: Settings },
+  { id: "collections", label: "ColeÃ§Ãµes por Nicho", icon: Folder },
 ];
+
+const visibleLibrarySections = ["Advertorial", "Quiz", "Pagina de Venda", "Criativo"];
+const visibleSwipeTypes = visibleLibrarySections as SwipeType[];
+
 
 const statuses: SwipeStatus[] = ["Ativo", "Arquivado", "Quebrado", "Para analisar"];
 const languages = ["PT-BR", "EN", "ES", "FR", "DE"];
@@ -86,14 +75,14 @@ const featureLabels: Array<[keyof Swipe["features"], string]> = [
   ["hasExpert", "Especialista"],
   ["hasStudies", "Estudos"],
   ["hasGuarantee", "Garantia"],
-  ["hasBonuses", "Bônus"],
+  ["hasBonuses", "BÃ´nus"],
   ["hasFaq", "FAQ"],
-  ["hasComparison", "Comparação"],
-  ["hasPriceAnchor", "Ancoragem de preço"],
+  ["hasComparison", "ComparaÃ§Ã£o"],
+  ["hasPriceAnchor", "Ancoragem de preÃ§o"],
   ["hasLimitedOffer", "Oferta limitada"],
   ["hasRepeatedCta", "CTA repetido"],
   ["hasStickyBar", "Sticky bar"],
-  ["hasVsl", "Vídeo/VSL"],
+  ["hasVsl", "VÃ­deo/VSL"],
   ["hasQuiz", "Quiz"],
   ["hasExternalCheckout", "Checkout externo"],
   ["hasOrderBump", "Order bump"],
@@ -142,7 +131,6 @@ export default function Home() {
   const [selectedSwipeId, setSelectedSwipeId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [collectionOpen, setCollectionOpen] = useState(false);
-  const [funnelOpen, setFunnelOpen] = useState(false);
   const [toast, setToast] = useState("");
 
   useEffect(() => {
@@ -192,7 +180,7 @@ export default function Home() {
   const selectedSwipe = swipes.find((swipe) => swipe.id === selectedSwipeId) ?? swipes[0];
 
   const filteredSwipes = useMemo(() => {
-    const sectionType = swipeTypes.includes(activeSection as SwipeType) ? activeSection : "";
+    const sectionType = visibleLibrarySections.includes(activeSection) ? activeSection : "";
     return swipes.filter((swipe) => {
       const haystack = [
         swipe.title,
@@ -236,15 +224,14 @@ export default function Home() {
   const stats = useMemo(() => {
     const byType = (type: SwipeType) => swipes.filter((swipe) => swipe.type === type).length;
     return [
-      { label: "Total de Swipes", value: swipes.length, icon: Boxes, tone: "from-blue-500 to-cyan-400" },
-      { label: "Advertorials", value: byType("Advertorial"), icon: FileText, tone: "from-violet-500 to-fuchsia-400" },
-      { label: "Quizzes", value: byType("Quiz"), icon: Gauge, tone: "from-emerald-500 to-teal-400" },
-      { label: "Páginas de Venda", value: byType("Pagina de Venda"), icon: BookOpen, tone: "from-sky-500 to-blue-400" },
-      { label: "Criativos", value: byType("Criativo"), icon: ImagePlus, tone: "from-amber-500 to-orange-400" },
-      { label: "Funis", value: funnels.length, icon: Workflow, tone: "from-indigo-500 to-violet-400" },
-      { label: "Favoritos", value: swipes.filter((swipe) => swipe.isFavorite).length, icon: Heart, tone: "from-rose-500 to-pink-400" },
+      { label: "Total", value: swipes.length, icon: Boxes, tone: "from-blue-500 to-cyan-400", section: "dashboard" },
+      { label: "PÃ¡ginas de Venda", value: byType("Pagina de Venda"), icon: BookOpen, tone: "from-sky-500 to-blue-400", section: "Pagina de Venda" },
+      { label: "Quizzes", value: byType("Quiz"), icon: Gauge, tone: "from-emerald-500 to-teal-400", section: "Quiz" },
+      { label: "Criativos", value: byType("Criativo"), icon: ImagePlus, tone: "from-amber-500 to-orange-400", section: "Criativo" },
+      { label: "Advertorials", value: byType("Advertorial"), icon: FileText, tone: "from-violet-500 to-fuchsia-400", section: "Advertorial" },
+      { label: "ColeÃ§Ãµes", value: collections.length, icon: Folder, tone: "from-indigo-500 to-violet-400", section: "collections" },
     ];
-  }, [funnels.length, swipes]);
+  }, [collections.length, swipes]);
 
   function showToast(message: string) {
     setToast(message);
@@ -253,7 +240,7 @@ export default function Home() {
 
   function upsertSwipe(next: Swipe) {
     setSwipes((current) => current.map((swipe) => (swipe.id === next.id ? next : swipe)));
-    showToast("Análise atualizada.");
+    showToast("AnÃ¡lise atualizada.");
   }
 
   function createSwipe(swipe: Swipe) {
@@ -270,10 +257,10 @@ export default function Home() {
   }
 
   function deleteSwipe(id: string) {
-    if (!window.confirm("Excluir este swipe? Esta ação não pode ser desfeita.")) return;
+    if (!window.confirm("Excluir este swipe? Esta aÃ§Ã£o nÃ£o pode ser desfeita.")) return;
     setSwipes((current) => current.filter((swipe) => swipe.id !== id));
     setSelectedSwipeId(swipes[0]?.id ?? null);
-    showToast("Swipe excluído.");
+    showToast("Swipe excluÃ­do.");
   }
 
   if (!isAuthenticated) {
@@ -312,7 +299,7 @@ export default function Home() {
           viewMode={viewMode}
           setViewMode={setViewMode}
           onAdd={() => setAddOpen(true)}
-          onFunnel={() => setFunnelOpen(true)}
+          onFunnel={() => setActiveSection("collections")}
           onMenu={() => setSidebarOpen(true)}
         />
         <div className="mx-auto w-full max-w-[1540px] px-4 py-5 sm:px-6 lg:px-8">
@@ -330,10 +317,11 @@ export default function Home() {
                   stats={stats}
                   swipes={swipes}
                   onAdd={() => setAddOpen(true)}
-                  onFunnel={() => setFunnelOpen(true)}
+                  onFunnel={() => setActiveSection("collections")}
                   onSelectSwipe={(id) => {
+                    const swipe = swipes.find((item) => item.id === id);
                     setSelectedSwipeId(id);
-                    setActiveSection("swipes");
+                    setActiveSection(swipe && visibleLibrarySections.includes(swipe.type) ? swipe.type : "Pagina de Venda");
                   }}
                   onFavorite={toggleFavorite}
                   onDelete={deleteSwipe}
@@ -341,7 +329,7 @@ export default function Home() {
                 />
               )}
 
-              {["swipes", "favorites", ...swipeTypes].includes(activeSection) && (
+              {visibleLibrarySections.includes(activeSection) && (
                 <LibraryView
                   title={sectionTitle(activeSection)}
                   description={sectionDescription(activeSection)}
@@ -362,17 +350,7 @@ export default function Home() {
                 <CollectionsView collections={collections} swipes={swipes} onCreate={() => setCollectionOpen(true)} />
               )}
 
-              {activeSection === "funnels" && (
-                <FunnelsView funnels={funnels} swipes={swipes} onCreate={() => setFunnelOpen(true)} />
-              )}
-
-              {activeSection === "reports" && <ReportsView swipes={swipes} funnels={funnels} />}
-
-              {activeSection === "tags" && <TagsView swipes={swipes} />}
-
-              {activeSection === "settings" && <SettingsView />}
-
-              {selectedSwipe && ["swipes", "favorites", ...swipeTypes].includes(activeSection) && (
+              {selectedSwipe && visibleLibrarySections.includes(activeSection) && (
                 <SwipeDetail
                   swipe={selectedSwipe}
                   swipes={swipes}
@@ -394,17 +372,7 @@ export default function Home() {
         onSave={(collection) => {
           setCollections((current) => [collection, ...current]);
           setCollectionOpen(false);
-          showToast("Coleção criada.");
-        }}
-      />
-      <FunnelModal
-        open={funnelOpen}
-        onClose={() => setFunnelOpen(false)}
-        swipes={swipes}
-        onSave={(funnel) => {
-          setFunnels((current) => [funnel, ...current]);
-          setFunnelOpen(false);
-          showToast("Funil criado.");
+          showToast("ColeÃ§Ã£o criada.");
         }}
       />
       <AnimatePresence>
@@ -473,13 +441,13 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         </div>
         <div className="max-w-3xl py-16">
           <h1 className="text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl">
-            Centralize seus melhores swipes DTC em um s? lugar
+            Centralize seus melhores swipes DTC em um só lugar
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-            Organize advertorials, quizzes, p?ginas de venda, criativos, bibliotecas de an?ncios e funis completos com an?lise estrat?gica.
+            Organize advertorials, quizzes, páginas de venda, criativos, bibliotecas de anúncios e funis completos com análise estratégica.
           </p>
           <div className="mt-10 grid max-w-4xl gap-3 sm:grid-cols-3">
-            {["Captura por URL", "Copy analysis", "Funis conectados"].map((item) => (
+            {["Captura por URL", "Copy analysis", "Nichos organizados"].map((item) => (
               <div key={item} className="rounded-lg border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-200">
                 <Check className="mb-3 h-4 w-4 text-emerald-300" />
                 {item}
@@ -677,7 +645,7 @@ function TopBar({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar swipes, funis, produtos, domínios..."
+            placeholder="Buscar páginas, quizzes, criativos, advertorials..."
             className="h-11 w-full rounded-lg border border-[#1a2d55] bg-[#081327] pl-10 pr-14 text-sm text-white outline-none placeholder:text-slate-500 focus:border-[#2563ff]/70 focus:shadow-[0_0_0_3px_rgba(37,99,255,0.22)]"
           />
           <span className="pointer-events-none absolute right-3 top-1/2 hidden h-6 -translate-y-1/2 items-center rounded-md bg-white/[0.04] px-2 text-[11px] text-slate-400 sm:flex">
@@ -689,13 +657,13 @@ function TopBar({
             className={cn("h-8 rounded-md px-3 text-xs", mode === "informacoes" && "bg-white/10 text-white")}
             onClick={() => setMode("informacoes")}
           >
-            Informações
+            InformaÃ§Ãµes
           </button>
           <button
             className={cn("h-8 rounded-md px-3 text-xs", mode === "metricas" && "bg-white/10 text-white")}
             onClick={() => setMode("metricas")}
           >
-            Métricas
+            MÃ©tricas
           </button>
         </div>
         <div className="hidden gap-1 rounded-lg border border-[#1a2d55] bg-[#081327] p-1 sm:flex">
@@ -729,7 +697,7 @@ function TopBar({
           <Plus className="h-4 w-4" />
           <span className="hidden sm:inline">Adicionar Swipe</span>
         </button>
-        <button className="relative hidden h-11 w-11 items-center justify-center rounded-lg border border-[#1a2d55] bg-[#081327] text-slate-300 hover:border-[#8b5cff]/60 hover:text-white md:flex" aria-label="Notificações">
+        <button className="relative hidden h-11 w-11 items-center justify-center rounded-lg border border-[#1a2d55] bg-[#081327] text-slate-300 hover:border-[#8b5cff]/60 hover:text-white md:flex" aria-label="NotificaÃ§Ãµes">
           <Bell className="h-4 w-4" />
           <span className="absolute -right-2 -top-2 rounded-full bg-[#5048ff] px-1.5 py-0.5 text-[10px] font-bold text-white">12</span>
         </button>
@@ -748,7 +716,7 @@ function Dashboard({
   onDelete,
   onSection,
 }: {
-  stats: Array<{ label: string; value: number; icon: typeof Boxes; tone: string }>;
+  stats: Array<{ label: string; value: number; icon: typeof Boxes; tone: string; section: string }>;
   swipes: Swipe[];
   onAdd: () => void;
   onFunnel: () => void;
@@ -764,17 +732,17 @@ function Dashboard({
         <div className="grid min-h-[288px] gap-6 bg-[radial-gradient(circle_at_70%_20%,rgba(109,59,255,0.28),transparent_35%),radial-gradient(circle_at_45%_90%,rgba(37,99,255,0.22),transparent_40%),linear-gradient(135deg,#030716_0%,#050B1D_45%,#090B2A_100%)] p-6 lg:grid-cols-[0.9fr_1.1fr] lg:p-9">
           <div className="max-w-3xl">
             <h1 className="max-w-2xl text-[30px] font-semibold leading-[1.18] text-white sm:text-[36px]">
-              Centralize seus melhores swipes DTC em um só lugar
+              Centralize seus melhores swipes DTC em um sÃ³ lugar
             </h1>
             <p className="mt-4 max-w-2xl text-sm font-normal leading-7 text-slate-300 sm:text-[15px]">
-              Organize advertorials, quizzes, páginas de venda, criativos, bibliotecas de anúncios e funis completos com análise estratégica.
+              Organize advertorials, quizzes, pÃ¡ginas de venda, criativos, bibliotecas de anÃºncios e funis completos com anÃ¡lise estratÃ©gica.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <button onClick={onAdd} className="h-11 rounded-lg bg-gradient-to-r from-[#2563ff] to-[#6d3bff] px-4 text-sm font-semibold shadow-[0_0_36px_rgba(109,59,255,0.28)]">
-                Começar agora
+                ComeÃ§ar agora
               </button>
               <button onClick={onFunnel} className="h-11 rounded-lg border border-[#1a2d55] bg-[#081327]/70 px-4 text-sm text-slate-200 hover:border-[#8b5cff]/50 hover:bg-[#0b1730]">
-                Ver tutorial
+                Organizar nichos
               </button>
             </div>
           </div>
@@ -784,13 +752,13 @@ function Dashboard({
           </div>
         </div>
       </section>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
             <button
               key={stat.label}
-              onClick={() => onSection(stat.label === "Favoritos" ? "favorites" : "swipes")}
+              onClick={() => onSection(stat.section)}
               className="rounded-lg border border-[rgba(139,92,255,0.24)] bg-[#081327] p-4 text-left shadow-[0_14px_42px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:border-[rgba(139,92,255,0.55)] hover:shadow-[0_0_34px_rgba(109,59,255,0.18)]"
             >
               <div className={cn("mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br", stat.tone)}>
@@ -805,7 +773,7 @@ function Dashboard({
       </div>
       <DashboardFilterToolbar />
       <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
-        <Panel title="Adicionados recentemente" action="Ver biblioteca" onAction={() => onSection("swipes")}>
+        <Panel title="Adicionados recentemente" action="Ver pÃ¡ginas" onAction={() => onSection("Pagina de Venda")}>
           {recent.length > 0 ? (
             <SwipeGrid swipes={recent} onSelect={onSelectSwipe} onFavorite={onFavorite} onDelete={onDelete} compact />
           ) : (
@@ -813,11 +781,11 @@ function Dashboard({
           )}
         </Panel>
         <div className="space-y-4">
-          <Panel title="Resumo do Funil">
-            <FunnelSummaryRail swipes={swipes} />
+          <Panel title="Nichos principais">
+            <TopNichesList swipes={swipes} />
           </Panel>
-          <Panel title="Top Tags" action="Ver todas as tags" onAction={() => onSection("tags")}>
-            <TopTagsList swipes={swipes} />
+          <Panel title="ColeÃ§Ãµes por Nicho" action="Ver coleÃ§Ãµes" onAction={() => onSection("collections")}>
+            <CollectionNicheSummary swipes={swipes} />
           </Panel>
         </div>
       </div>
@@ -831,7 +799,7 @@ function DashboardFilterToolbar() {
     ["Tipo", ChevronDown],
     ["Categoria", ChevronDown],
     ["GEO", ChevronDown],
-    ["Fonte de Tráfego", ChevronDown],
+    ["Fonte de TrÃ¡fego", ChevronDown],
     ["Status", ChevronDown],
     ["Data adicionada", Calendar],
     ["Filtros", SlidersHorizontal],
@@ -876,77 +844,37 @@ function DashboardEmptyLibrary({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-function FunnelSummaryRail({ swipes }: { swipes: Swipe[] }) {
-  const total = swipes.length;
-  const pageViews = swipes.filter((swipe) => ["Advertorial", "Quiz", "Pagina de Venda", "Landing Page"].includes(swipe.type)).length;
-  const checkoutSignals = swipes.filter((swipe) => swipe.features.hasExternalCheckout || swipe.features.hasOrderBump).length;
-  const purchaseSignals = swipes.filter((swipe) => swipe.features.hasUpsell || swipe.type === "Upsell").length;
-  const steps = [
-    ["Descoberta", total],
-    ["Clique", total],
-    ["LP View", pageViews],
-    ["Add to Cart", checkoutSignals],
-    ["Purchase", purchaseSignals],
-  ] as const;
-  const conversionRate = total > 0 ? Math.round((purchaseSignals / total) * 1000) / 10 : 0;
+function TopNichesList({ swipes }: { swipes: Swipe[] }) {
+  const topNiches = countBy(swipes, "niche").slice(0, 5);
 
-  return (
-    <div className="space-y-4">
-      <div className="space-y-3">
-        {steps.map(([label, value], index) => (
-          <div key={label} className="grid grid-cols-[34px_1fr_auto] items-center gap-3">
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-400/15 text-emerald-200">
-              {index < steps.length - 1 && <span className="absolute left-1/2 top-9 h-5 w-px -translate-x-1/2 bg-emerald-400/35" />}
-              <span className="text-xs font-semibold">{index + 1}</span>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400">{label}</p>
-              <p className="text-lg font-semibold text-white">{value}</p>
-            </div>
-            <span className="text-xs font-semibold text-slate-500">0%</span>
-          </div>
-        ))}
-      </div>
-      <div className="rounded-lg border border-[#1a2d55] bg-[#0b1730] p-4 shadow-[0_0_28px_rgba(37,99,255,0.1)]">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-400">Taxa de Conversao</span>
-          <span className="text-xs font-semibold text-slate-500">0%</span>
-        </div>
-        <p className="mt-2 text-2xl font-semibold text-white">{conversionRate.toLocaleString("pt-BR")}%</p>
-        <div className="mt-3 h-10 rounded bg-[linear-gradient(135deg,rgba(37,99,255,0.28),rgba(34,211,238,0.12))]" />
-      </div>
-    </div>
-  );
-}
-
-function TopTagsList({ swipes }: { swipes: Swipe[] }) {
-  const tags = swipes
-    .flatMap((swipe) => swipe.tags)
-    .reduce<Record<string, number>>((acc, tag) => {
-      acc[tag] = (acc[tag] ?? 0) + 1;
-      return acc;
-    }, {});
-  const topTags = Object.entries(tags)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-
-  if (topTags.length === 0) {
+  if (topNiches.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-[#1a2d55] bg-[#050b1d]/60 px-4 py-6 text-center">
-        <p className="text-sm font-medium text-white">Nenhuma tag ainda.</p>
-        <p className="mt-1 text-xs leading-5 text-slate-500">As tags aparecem quando voce salvar seus primeiros swipes.</p>
+        <p className="text-sm font-medium text-white">Nenhum nicho ainda.</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">Os nichos aparecem quando vocÃª salvar pÃ¡ginas, quizzes, criativos ou advertorials.</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      {topTags.map(([tag, count]) => (
-        <div key={tag} className="flex items-center justify-between rounded-lg border border-[#1a2d55] bg-[#0b1730] px-3 py-3">
-          <p className="text-sm text-white">{tag}</p>
-          <p className="text-sm text-slate-500">{count}</p>
+      {topNiches.map((item) => (
+        <div key={item.label} className="flex items-center justify-between rounded-lg border border-[#1a2d55] bg-[#0b1730] px-3 py-3">
+          <p className="text-sm text-white">{item.label}</p>
+          <p className="text-sm text-slate-500">{item.value}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function CollectionNicheSummary({ swipes }: { swipes: Swipe[] }) {
+  const uniqueNiches = new Set(swipes.map((swipe) => swipe.niche).filter(Boolean)).size;
+  return (
+    <div className="rounded-lg border border-[#1a2d55] bg-[#0b1730] p-4">
+      <p className="text-xs text-slate-400">Use coleÃ§Ãµes para separar sua biblioteca por nichos.</p>
+      <p className="mt-3 text-3xl font-semibold text-white">{uniqueNiches}</p>
+      <p className="mt-1 text-xs font-medium text-slate-500">{uniqueNiches === 1 ? "nicho mapeado" : "nichos mapeados"}</p>
     </div>
   );
 }
@@ -1016,10 +944,10 @@ function FilterBar({ filters, setFilters }: { filters: Filters; setFilters: (fil
     <div className="rounded-xl border border-white/10 bg-[#111827] p-3">
       <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
         <Filter className="h-4 w-4 text-blue-300" />
-        Filtros avançados
+        Filtros avanÃ§ados
       </div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        <Select value={filters.type} onChange={(value) => update("type", value)} options={["", ...swipeTypes]} placeholder="Tipo de swipe" />
+        <Select value={filters.type} onChange={(value) => update("type", value)} options={["", ...visibleSwipeTypes]} placeholder="Tipo de swipe" />
         <Select value={filters.niche} onChange={(value) => update("niche", value)} options={["", ...niches]} placeholder="Nicho" />
         <Select value={filters.geo} onChange={(value) => update("geo", value)} options={["", ...geos]} placeholder="GEO" />
         <Select value={filters.language} onChange={(value) => update("language", value)} options={["", ...languages]} placeholder="Idioma" />
@@ -1030,10 +958,10 @@ function FilterBar({ filters, setFilters }: { filters: Filters; setFilters: (fil
           placeholder="Fonte"
         />
         <Select value={filters.status} onChange={(value) => update("status", value)} options={["", ...statuses]} placeholder="Status" />
-        <Select value={filters.rating} onChange={(value) => update("rating", value)} options={["", "1", "2", "3", "4", "5"]} placeholder="Nota mínima" />
+        <Select value={filters.rating} onChange={(value) => update("rating", value)} options={["", "1", "2", "3", "4", "5"]} placeholder="Nota mÃ­nima" />
         <Toggle checked={filters.favorites} onChange={(value) => update("favorites", value)} label="Favoritos" />
         <Toggle checked={filters.hasScreenshot} onChange={(value) => update("hasScreenshot", value)} label="Tem screenshot" />
-        <Toggle checked={filters.hasAnalysis} onChange={(value) => update("hasAnalysis", value)} label="Tem análise" />
+        <Toggle checked={filters.hasAnalysis} onChange={(value) => update("hasAnalysis", value)} label="Tem anÃ¡lise" />
       </div>
     </div>
   );
@@ -1127,7 +1055,7 @@ function SwipeCard({
       </button>
       <div className="flex items-center justify-between border-t border-[#1a2d55]/80 bg-[#0b1730]/72 px-3 py-2">
         <div className="flex gap-1">
-          <IconButton label="Ver análise" icon={Eye} onClick={onSelect} />
+          <IconButton label="Ver anÃ¡lise" icon={Eye} onClick={onSelect} />
           <IconButton label="Editar" icon={PenLine} onClick={onSelect} />
           <IconButton label="Copiar URL" icon={Copy} onClick={() => void copySwipeUrl(swipe.url)} />
           <a className="rounded-md p-2 text-slate-400 hover:bg-white/10 hover:text-white" href={swipe.url} target="_blank" rel="noreferrer" title="Abrir link">
@@ -1175,7 +1103,7 @@ function SwipeDetail({
     });
   }, [mode, swipe]);
 
-  const relatedSteps = ["Anúncio", "Advertorial", "Quiz", "Página de vendas", "Checkout", "Upsell"];
+  const relatedSteps = ["AnÃºncio", "Advertorial", "Quiz", "PÃ¡gina de vendas", "Checkout", "Upsell"];
   return (
     <section className="overflow-hidden rounded-xl border border-white/10 bg-[#111827]">
       <div className="grid gap-0 lg:grid-cols-[420px_1fr]">
@@ -1207,10 +1135,10 @@ function SwipeDetail({
             </div>
             <div className="flex flex-wrap gap-2">
               <a className="rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/[0.06]" href={draft.url} target="_blank" rel="noreferrer">
-                Abrir Página
+                Abrir PÃ¡gina
               </a>
               <button onClick={() => onSave(draft)} className="rounded-lg bg-blue-500 px-3 py-2 text-xs font-semibold">
-                Salvar alterações
+                Salvar alteraÃ§Ãµes
               </button>
               <button onClick={() => onDelete(draft.id)} className="rounded-lg border border-rose-400/20 px-3 py-2 text-xs text-rose-200">
                 Excluir
@@ -1221,9 +1149,9 @@ function SwipeDetail({
         <div className="min-w-0">
           <div className="flex gap-1 overflow-x-auto border-b border-white/10 p-3">
             {[
-              ["resumo", "Informações"],
-              ["copy", "Análise de Copy"],
-              ["metricas", "Métricas"],
+              ["resumo", "InformaÃ§Ãµes"],
+              ["copy", "AnÃ¡lise de Copy"],
+              ["metricas", "MÃ©tricas"],
               ["funil", "Funil"],
             ].map(([id, label]) => (
               <button
@@ -1241,10 +1169,10 @@ function SwipeDetail({
                 <Field label="Nome da oferta" value={draft.title} onChange={(value) => setDraft({ ...draft, title: value })} />
                 <Field label="Produto" value={draft.product} onChange={(value) => setDraft({ ...draft, product: value })} />
                 <Field label="Marca/anunciante" value={draft.brand} onChange={(value) => setDraft({ ...draft, brand: value })} />
-                <Field label="Preço" value={draft.price} onChange={(value) => setDraft({ ...draft, price: value })} />
+                <Field label="PreÃ§o" value={draft.price} onChange={(value) => setDraft({ ...draft, price: value })} />
                 <Field label="Subnicho" value={draft.subniche} onChange={(value) => setDraft({ ...draft, subniche: value })} />
                 <Field label="Plataforma" value={draft.platform} onChange={(value) => setDraft({ ...draft, platform: value })} />
-                <TextArea label="Observações pessoais" value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} />
+                <TextArea label="ObservaÃ§Ãµes pessoais" value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} />
                 <TextArea label="Tags" value={draft.tags.join(", ")} onChange={(value) => setDraft({ ...draft, tags: splitTags(value) })} />
               </div>
             )}
@@ -1283,21 +1211,21 @@ function CopyAnalysisForm({ draft, setDraft }: { draft: Swipe; setDraft: (swipe:
     ["hook", "Hook"],
     ["bigIdea", "Big Idea"],
     ["promise", "Promessa"],
-    ["uniqueMechanism", "Mecanismo único"],
+    ["uniqueMechanism", "Mecanismo Ãºnico"],
     ["problemMechanism", "Mecanismo do problema"],
-    ["solutionMechanism", "Mecanismo da solução"],
+    ["solutionMechanism", "Mecanismo da soluÃ§Ã£o"],
     ["proof", "Prova"],
-    ["story", "História"],
+    ["story", "HistÃ³ria"],
     ["authority", "Autoridade"],
-    ["objections", "Objeções"],
+    ["objections", "ObjeÃ§Ãµes"],
     ["offer", "Oferta"],
     ["guarantee", "Garantia"],
     ["cta", "CTA"],
     ["scarcity", "Escassez"],
-    ["urgency", "Urgência"],
-    ["trustElements", "Elementos de confiança"],
-    ["conversionElements", "Elementos de conversão"],
-    ["notes", "Observações do usuário"],
+    ["urgency", "UrgÃªncia"],
+    ["trustElements", "Elementos de confianÃ§a"],
+    ["conversionElements", "Elementos de conversÃ£o"],
+    ["notes", "ObservaÃ§Ãµes do usuÃ¡rio"],
   ];
   return (
     <div className="space-y-5">
@@ -1307,7 +1235,7 @@ function CopyAnalysisForm({ draft, setDraft }: { draft: Swipe; setDraft: (swipe:
         ))}
       </div>
       <div>
-        <p className="mb-3 text-sm font-medium text-white">Elementos presentes na página</p>
+        <p className="mb-3 text-sm font-medium text-white">Elementos presentes na pÃ¡gina</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {featureLabels.map(([key, label]) => (
             <Toggle key={key} checked={draft.features[key]} onChange={(value) => updateFeature(key, value)} label={label} />
@@ -1327,19 +1255,19 @@ function MetricsForm({ draft, setDraft }: { draft: Swipe; setDraft: (swipe: Swip
     ["cpm", "CPM"],
     ["cpa", "CPA"],
     ["roas", "ROAS"],
-    ["conversionRate", "Conversão da página"],
+    ["conversionRate", "ConversÃ£o da pÃ¡gina"],
     ["epc", "EPC"],
     ["aov", "AOV"],
     ["estimatedRevenue", "Receita estimada"],
     ["estimatedSpend", "Spend estimado"],
-    ["source", "Fonte da métrica"],
+    ["source", "Fonte da mÃ©trica"],
   ];
   return (
     <div className="grid gap-4 xl:grid-cols-3">
       {fields.map(([key, label]) => (
         <Field key={key} label={label} value={draft.metrics[key]} onChange={(value) => update(key, value)} />
       ))}
-      <TextArea label="Observações" value={draft.metrics.notes} onChange={(value) => update("notes", value)} />
+      <TextArea label="ObservaÃ§Ãµes" value={draft.metrics.notes} onChange={(value) => update("notes", value)} />
     </div>
   );
 }
@@ -1374,7 +1302,7 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
   function capturePreview() {
     const url = safeUrl(form.url);
     if (!url) {
-      setPreview({ error: "URL inválida. Use http:// ou https://." });
+      setPreview({ error: "URL invÃ¡lida. Use http:// ou https://." });
       return;
     }
     startTransition(async () => {
@@ -1393,7 +1321,7 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
           screenshotUrl: data.screenshotUrl || data.image || current.screenshotUrl,
         }));
       } catch {
-        setPreview({ error: "Não foi possível capturar automaticamente. Você pode salvar mesmo assim e adicionar um screenshot manualmente." });
+        setPreview({ error: "NÃ£o foi possÃ­vel capturar automaticamente. VocÃª pode salvar mesmo assim e adicionar um screenshot manualmente." });
       }
     });
   }
@@ -1401,7 +1329,7 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
   function submit() {
     const url = safeUrl(form.url);
     if (!url) {
-      setPreview({ error: "URL inválida. Use http:// ou https://." });
+      setPreview({ error: "URL invÃ¡lida. Use http:// ou https://." });
       return;
     }
     const now = new Date().toISOString();
@@ -1453,7 +1381,7 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
               Capturar Screenshot
             </button>
           </div>
-          <SelectField label="Tipo de swipe" value={form.type} onChange={(value) => setForm({ ...form, type: value as SwipeType })} options={swipeTypes} />
+          <SelectField label="Tipo de swipe" value={form.type} onChange={(value) => setForm({ ...form, type: value as SwipeType })} options={visibleSwipeTypes} />
           <Field label="Nome da oferta" value={form.title} onChange={(value) => setForm({ ...form, title: value })} />
           <Field label="Produto" value={form.product} onChange={(value) => setForm({ ...form, product: value })} />
           <Field label="Marca/anunciante" value={form.brand} onChange={(value) => setForm({ ...form, brand: value })} />
@@ -1461,23 +1389,23 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
           <Field label="Subnicho" value={form.subniche} onChange={(value) => setForm({ ...form, subniche: value })} />
           <SelectField label="GEO" value={form.geo} onChange={(value) => setForm({ ...form, geo: value })} options={geos} />
           <SelectField label="Idioma" value={form.language} onChange={(value) => setForm({ ...form, language: value })} options={languages} />
-          <SelectField label="Fonte de tráfego" value={form.trafficSource} onChange={(value) => setForm({ ...form, trafficSource: value })} options={trafficSources} />
-          <SelectField label="Plataforma de anúncio" value={form.platform} onChange={(value) => setForm({ ...form, platform: value })} options={platforms} />
-          <Field label="Link da biblioteca de anúncios" value={form.adLibraryUrl} onChange={(value) => setForm({ ...form, adLibraryUrl: value })} />
+          <SelectField label="Fonte de trÃ¡fego" value={form.trafficSource} onChange={(value) => setForm({ ...form, trafficSource: value })} options={trafficSources} />
+          <SelectField label="Plataforma de anÃºncio" value={form.platform} onChange={(value) => setForm({ ...form, platform: value })} options={platforms} />
+          <Field label="Link da biblioteca de anÃºncios" value={form.adLibraryUrl} onChange={(value) => setForm({ ...form, adLibraryUrl: value })} />
           <Field label="Link do criativo" value={form.creativeUrl} onChange={(value) => setForm({ ...form, creativeUrl: value })} />
           <Field label="Upload manual / URL do screenshot" value={form.screenshotUrl} onChange={(value) => setForm({ ...form, screenshotUrl: value })} />
           <Field label="Tags" value={form.tags} onChange={(value) => setForm({ ...form, tags: value })} placeholder="vsl, prova social, br" />
           <SelectField label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value as SwipeStatus })} options={statuses} />
           <SelectField label="Nota" value={String(form.rating)} onChange={(value) => setForm({ ...form, rating: Number(value) })} options={["1", "2", "3", "4", "5"]} />
           <div className="sm:col-span-2">
-            <TextArea label="Observações" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
+            <TextArea label="ObservaÃ§Ãµes" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
           </div>
           <Toggle checked={form.isFavorite} onChange={(value) => setForm({ ...form, isFavorite: value })} label="Favorito" />
         </div>
         <div className="space-y-4">
           <ScreenshotPreview preview={preview} screenshotUrl={form.screenshotUrl} />
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs leading-5 text-slate-400">
-            A captura respeita páginas públicas. Se houver bloqueio do site, use a imagem Open Graph ou envie um screenshot manual.
+            A captura respeita pÃ¡ginas pÃºblicas. Se houver bloqueio do site, use a imagem Open Graph ou envie um screenshot manual.
           </div>
         </div>
       </div>
@@ -1523,9 +1451,31 @@ function ScreenshotPreview({
 }
 
 function CollectionsView({ collections, swipes, onCreate }: { collections: Collection[]; swipes: Swipe[]; onCreate: () => void }) {
+  const nicheSuggestions = countBy(swipes, "niche").slice(0, 6);
   return (
     <section className="space-y-4">
-      <PageHeading title="Coleções" description="Agrupe swipes por estratégia, nicho, oferta ou inspiração." action="Criar coleção" onAction={onCreate} />
+      <PageHeading title="Coleções por Nicho" description="Organize suas páginas de venda, quizzes, criativos e advertorials por nicho." action="Criar coleção" onAction={onCreate} />
+      {nicheSuggestions.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {nicheSuggestions.map((item) => (
+            <span key={item.label} className="rounded-full border border-[#1a2d55] bg-[#081327] px-3 py-1.5 text-xs font-medium text-slate-300">
+              {item.label} · {item.value}
+            </span>
+          ))}
+        </div>
+      )}
+      {collections.length === 0 && (
+        <div className="rounded-xl border border-dashed border-[#1a2d55] bg-[#081327] p-8 text-center">
+          <Folder className="mx-auto mb-4 h-9 w-9 text-slate-500" />
+          <h3 className="text-lg font-semibold text-white">Nenhuma coleção por nicho ainda.</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-400">
+            Crie coleções como Diabetes, Skincare, Emagrecimento ou Pets para separar os swipes com mais clareza.
+          </p>
+          <button onClick={onCreate} className="mt-5 h-10 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 px-4 text-sm font-semibold text-white">
+            Criar coleção
+          </button>
+        </div>
+      )}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {collections.map((collection) => (
           <div key={collection.id} className="overflow-hidden rounded-lg border border-white/10 bg-[#1c2230]">
@@ -1541,91 +1491,6 @@ function CollectionsView({ collections, swipes, onCreate }: { collections: Colle
                 <span>{swipes.filter((swipe) => collection.swipeIds.includes(swipe.id)).map((swipe) => swipe.niche)[0] ?? "Geral"}</span>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function FunnelsView({ funnels, swipes, onCreate }: { funnels: Funnel[]; swipes: Swipe[]; onCreate: () => void }) {
-  return (
-    <section className="space-y-4">
-      <PageHeading title="Funis" description="Mapeie a sequência completa: anúncio, presell, quiz, VSL, checkout e upsells." action="Criar funil" onAction={onCreate} />
-      <div className="grid gap-4 xl:grid-cols-2">
-        {funnels.map((funnel) => (
-          <div key={funnel.id} className="rounded-xl border border-white/10 bg-[#111827] p-5">
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">{funnel.name}</h3>
-                <p className="mt-1 text-sm text-slate-400">
-                  {funnel.niche} · {funnel.geo} · {funnel.trafficSource}
-                </p>
-              </div>
-              <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200">{funnel.ticket}</span>
-            </div>
-            <FunnelTimeline funnel={funnel} swipes={swipes} />
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ReportsView({ swipes, funnels }: { swipes: Swipe[]; funnels: Funnel[] }) {
-  const typeCounts = countBy(swipes, "type");
-  const nicheCounts = countBy(swipes, "niche");
-  const geoCounts = countBy(swipes, "geo");
-  const sourceCounts = countBy(swipes, "trafficSource");
-  return (
-    <section className="space-y-4">
-      <PageHeading title="Relatórios" description="Visão rápida de categorias, nichos, GEOs, fontes e evolução da biblioteca." />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <BarList title="Swipes por categoria" data={typeCounts} />
-        <BarList title="Swipes por nicho" data={nicheCounts} />
-        <BarList title="Swipes por GEO" data={geoCounts} />
-        <BarList title="Fontes de tráfego" data={sourceCounts} />
-      </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <ReportMetric label="Funis mapeados" value={funnels.length} />
-        <ReportMetric label="Swipes favoritos" value={swipes.filter((swipe) => swipe.isFavorite).length} />
-        <ReportMetric label="Média de nota" value={(swipes.reduce((sum, swipe) => sum + swipe.rating, 0) / Math.max(swipes.length, 1)).toFixed(1)} />
-      </div>
-    </section>
-  );
-}
-
-function TagsView({ swipes }: { swipes: Swipe[] }) {
-  const tags = [...new Set(swipes.flatMap((swipe) => swipe.tags))];
-  return (
-    <section className="space-y-4">
-      <PageHeading title="Tags" description="Mapa de temas recorrentes nos seus swipes." />
-      <div className="flex flex-wrap gap-2 rounded-xl border border-white/10 bg-[#111827] p-5">
-        {tags.map((tag) => (
-          <span key={tag} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-200">
-            #{tag}
-          </span>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function SettingsView() {
-  return (
-    <section className="space-y-4">
-      <PageHeading title="Configurações" description="Autenticação, storage, captura e segurança do workspace." />
-      <div className="grid gap-4 lg:grid-cols-2">
-        {[
-          ["Supabase Auth", "Conecte as variáveis públicas e ative e-mail/senha no projeto."],
-          ["Supabase Storage", "Bucket `swipe-screenshots` para capturas e uploads manuais."],
-          ["RLS", "Políticas SQL prontas em `supabase/schema.sql` para isolamento por usuário."],
-          ["Captura de preview", "Rota `/api/capture` valida URL, busca Open Graph e tenta screenshot público."],
-        ].map(([title, description]) => (
-          <div key={title} className="rounded-xl border border-white/10 bg-[#111827] p-5">
-            <ShieldCheck className="mb-4 h-5 w-5 text-emerald-300" />
-            <h3 className="font-semibold text-white">{title}</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
           </div>
         ))}
       </div>
@@ -1649,10 +1514,10 @@ function CollectionModal({
   const [selected, setSelected] = useState<string[]>([]);
   if (!open) return null;
   return (
-    <Modal title="Criar Coleção" onClose={onClose}>
+    <Modal title="Criar ColeÃ§Ã£o" onClose={onClose}>
       <div className="space-y-4">
-        <Field label="Nome" value={name} onChange={setName} placeholder="Melhores Advertorials Diabetes" />
-        <TextArea label="Descrição" value={description} onChange={setDescription} />
+        <Field label="Nome" value={name} onChange={setName} placeholder="Diabetes, Skincare, Emagrecimento..." />
+        <TextArea label="DescriÃ§Ã£o" value={description} onChange={setDescription} />
         <div className="grid max-h-64 gap-2 overflow-y-auto">
           {swipes.map((swipe) => (
             <Toggle
@@ -1667,7 +1532,7 @@ function CollectionModal({
           onClick={() =>
             onSave({
               id: uid("collection"),
-              name: name || "Nova coleção",
+              name: name || "Nova coleÃ§Ã£o",
               description,
               coverUrl: swipes.find((swipe) => selected.includes(swipe.id))?.screenshotUrl || swipes[0]?.screenshotUrl || "",
               tags: [],
@@ -1677,68 +1542,7 @@ function CollectionModal({
           }
           className="h-10 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 px-4 text-sm font-semibold"
         >
-          Criar Coleção
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-function FunnelModal({
-  open,
-  onClose,
-  swipes,
-  onSave,
-}: {
-  open: boolean;
-  onClose: () => void;
-  swipes: Swipe[];
-  onSave: (funnel: Funnel) => void;
-}) {
-  const [name, setName] = useState("");
-  const [selected, setSelected] = useState<string[]>([]);
-  if (!open) return null;
-  return (
-    <Modal title="Criar Funil" onClose={onClose}>
-      <div className="space-y-4">
-        <Field label="Nome do funil" value={name} onChange={setName} placeholder="Glucose Delete" />
-        <div className="grid gap-2 sm:grid-cols-2">
-          {swipes.map((swipe) => (
-            <Toggle
-              key={swipe.id}
-              checked={selected.includes(swipe.id)}
-              label={swipe.title}
-              onChange={(checked) => setSelected((current) => (checked ? [...current, swipe.id] : current.filter((id) => id !== swipe.id)))}
-            />
-          ))}
-        </div>
-        <button
-          onClick={() =>
-            onSave({
-              id: uid("funnel"),
-              name: name || "Novo funil",
-              niche: swipes.find((swipe) => selected.includes(swipe.id))?.niche || "Geral",
-              product: "",
-              brand: "",
-              geo: swipes.find((swipe) => selected.includes(swipe.id))?.geo || "US",
-              language: "PT-BR",
-              trafficSource: swipes.find((swipe) => selected.includes(swipe.id))?.trafficSource || "Meta Ads",
-              ticket: "",
-              objective: "Mapear sequência de conversão.",
-              notes: "",
-              createdAt: new Date().toISOString(),
-              steps: selected.map((swipeId, index) => ({
-                id: uid("step"),
-                swipeId,
-                stepType: ["Anúncio", "Advertorial", "Quiz", "VSL", "Checkout", "Upsell"][index] ?? "Etapa",
-                stepOrder: index + 1,
-                notes: "",
-              })),
-            })
-          }
-          className="h-10 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 px-4 text-sm font-semibold"
-        >
-          Criar Funil
+          Criar ColeÃ§Ã£o
         </button>
       </div>
     </Modal>
@@ -1761,28 +1565,6 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </motion.div>
-    </div>
-  );
-}
-
-function FunnelTimeline({ funnel, swipes, compact = false }: { funnel?: Funnel; swipes: Swipe[]; compact?: boolean }) {
-  if (!funnel) return null;
-  return (
-    <div className={cn("flex gap-3 overflow-x-auto pb-2", compact && "flex-col overflow-visible pb-0")}>
-      {funnel.steps
-        .sort((a, b) => a.stepOrder - b.stepOrder)
-        .map((step, index) => {
-          const swipe = swipes.find((item) => item.id === step.swipeId);
-          return (
-            <div key={step.id} className={cn("flex min-w-44 items-center gap-3", compact && "min-w-0")}>
-              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
-                <p className="text-xs text-blue-300">{step.stepType}</p>
-                <p className="mt-1 line-clamp-1 text-sm font-medium text-white">{swipe?.title ?? "Etapa vazia"}</p>
-              </div>
-              {index < funnel.steps.length - 1 && <div className={cn("h-px w-8 bg-white/20", compact && "hidden")} />}
-            </div>
-          );
-        })}
     </div>
   );
 }
@@ -1849,7 +1631,7 @@ function MiniSwipeRow({ swipe, onClick }: { swipe: Swipe; onClick: () => void })
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-white">{swipe.title}</p>
-        <p className="text-xs text-slate-500">{swipe.niche} · {swipe.geo}</p>
+        <p className="text-xs text-slate-500">{swipe.niche} Â· {swipe.geo}</p>
       </div>
     </button>
   );
@@ -1927,7 +1709,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
     <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-[#111827] p-8 text-center">
       <Boxes className="mb-4 h-10 w-10 text-slate-500" />
       <h3 className="text-lg font-semibold text-white">Nenhum swipe encontrado.</h3>
-      <p className="mt-2 max-w-md text-sm text-slate-400">Comece adicionando seu primeiro link de referência.</p>
+      <p className="mt-2 max-w-md text-sm text-slate-400">Comece adicionando seu primeiro link de referÃªncia.</p>
       <button onClick={onAdd} className="mt-5 h-10 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 px-4 text-sm font-semibold">
         Adicionar Swipe
       </button>
@@ -2065,37 +1847,6 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BarList({ title, data }: { title: string; data: Array<{ label: string; value: number }> }) {
-  const max = Math.max(...data.map((item) => item.value), 1);
-  return (
-    <div className="rounded-xl border border-white/10 bg-[#111827] p-5">
-      <h3 className="font-semibold text-white">{title}</h3>
-      <div className="mt-4 space-y-3">
-        {data.map((item) => (
-          <div key={item.label}>
-            <div className="mb-1 flex justify-between text-xs text-slate-400">
-              <span>{item.label}</span>
-              <span>{item.value}</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500" style={{ width: `${(item.value / max) * 100}%` }} />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ReportMetric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-[#111827] p-5">
-      <p className="text-sm text-slate-400">{label}</p>
-      <p className="mt-2 text-3xl font-semibold text-white">{value}</p>
-    </div>
-  );
-}
-
 function countBy<T extends Record<string, unknown>>(items: T[], key: keyof T) {
   const map = new Map<string, number>();
   items.forEach((item) => {
@@ -2107,16 +1858,20 @@ function countBy<T extends Record<string, unknown>>(items: T[], key: keyof T) {
 
 function sectionTitle(section: string) {
   const map: Record<string, string> = {
-    swipes: "Biblioteca de Swipes",
-    favorites: "Favoritos",
+    "Pagina de Venda": "Páginas de Venda",
+    Quiz: "Quizzes",
+    Criativo: "Criativos",
+    Advertorial: "Advertorials",
   };
   return map[section] ?? section;
 }
 
 function sectionDescription(section: string) {
   const map: Record<string, string> = {
-    swipes: "Todos os links, screenshots, tags e análises estratégicas em um grid rápido de escanear.",
-    favorites: "Os swipes mais importantes para estudar, modelar e reutilizar.",
+    "Pagina de Venda": "Páginas de venda organizadas por nicho, GEO, fonte e status.",
+    Quiz: "Quizzes de pré-venda e segmentação para estudar estrutura, promessa e CTA.",
+    Criativo: "Criativos salvos para analisar hook, ângulo, plataforma e oferta.",
+    Advertorial: "Advertorials para mapear lead, mecanismo, prova e transição de venda.",
   };
   return map[section] ?? `Referências categorizadas como ${section}, com busca, filtros e ordenação.`;
 }
