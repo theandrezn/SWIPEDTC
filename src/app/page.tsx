@@ -187,6 +187,7 @@ function emptySwipeAdLibrary() {
     lastScrapedAt: "",
     scrapeStatus: "manual",
     scrapeError: "",
+    lastScreenshotUrl: "",
     snapshots: [],
   };
 }
@@ -1600,7 +1601,7 @@ function SwipeDetail({
                   <TextArea label="Observações pessoais" value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} />
                   <TextArea label="Tags" value={draft.tags.join(", ")} onChange={(value) => setDraft({ ...draft, tags: splitTags(value) })} />
                 </div>
-                <ProductAdLibraryPanel draft={draft} setDraft={setDraft} />
+                <ProductAdLibraryPanel draft={draft} setDraft={setDraft} onSave={onSave} />
               </div>
             )}
             {tab === "copy" && <CopyAnalysisForm draft={draft} setDraft={setDraft} />}
@@ -1626,7 +1627,15 @@ function SwipeDetail({
   );
 }
 
-function ProductAdLibraryPanel({ draft, setDraft }: { draft: Swipe; setDraft: (swipe: Swipe) => void }) {
+function ProductAdLibraryPanel({
+  draft,
+  setDraft,
+  onSave,
+}: {
+  draft: Swipe;
+  setDraft: (swipe: Swipe) => void;
+  onSave: (swipe: Swipe) => void;
+}) {
   const [syncing, setSyncing] = useState(false);
   const snapshots = draft.adLibrary.snapshots;
   const total = draft.adLibrary.currentAdCount;
@@ -1650,42 +1659,53 @@ function ProductAdLibraryPanel({ draft, setDraft }: { draft: Swipe; setDraft: (s
 
     setSyncing(true);
     try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 70000);
       const response = await fetch("/api/meta-ad-count", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
+        signal: controller.signal,
       });
+      window.clearTimeout(timeout);
       const result = (await response.json().catch(() => ({}))) as {
         adCount?: number | null;
         status?: string;
         source?: string;
         pageId?: string;
+        screenshotUrl?: string;
         error?: string;
       };
       const now = new Date().toISOString();
 
       if (!response.ok || result.adCount == null) {
-        setDraft({
+        const next = {
           ...draft,
           adLibrary: {
             ...draft.adLibrary,
             lastScrapedAt: now,
             metaPageId: result.pageId ?? draft.adLibrary.metaPageId,
+            scrapeEnabled: true,
             scrapeStatus: result.status ?? "error",
+            lastScreenshotUrl: result.screenshotUrl || draft.adLibrary.lastScreenshotUrl,
             scrapeError: result.error ?? "Não foi possível capturar a contagem da Meta.",
           },
-        });
+        };
+        setDraft(next);
+        onSave(next);
         return;
       }
 
-      setDraft({
+      const next = {
         ...draft,
         adLibrary: {
           ...draft.adLibrary,
           currentAdCount: result.adCount,
           metaPageId: result.pageId ?? draft.adLibrary.metaPageId,
+          scrapeEnabled: true,
           lastScrapedAt: now,
           scrapeStatus: "success",
+          lastScreenshotUrl: result.screenshotUrl || draft.adLibrary.lastScreenshotUrl,
           scrapeError: "",
           snapshots: [
             ...draft.adLibrary.snapshots.filter((snapshot) => snapshot.snapshotDate !== now.slice(0, 10)),
@@ -1698,7 +1718,23 @@ function ProductAdLibraryPanel({ draft, setDraft }: { draft: Swipe; setDraft: (s
             },
           ],
         },
-      });
+      };
+      setDraft(next);
+      onSave(next);
+    } catch (error) {
+      const now = new Date().toISOString();
+      const next = {
+        ...draft,
+        adLibrary: {
+          ...draft.adLibrary,
+          lastScrapedAt: now,
+          scrapeEnabled: true,
+          scrapeStatus: "error",
+          scrapeError: error instanceof Error && error.name === "AbortError" ? "A sincronização demorou demais. Tente novamente." : "Falha ao sincronizar com a Meta Ads Library.",
+        },
+      };
+      setDraft(next);
+      onSave(next);
     } finally {
       setSyncing(false);
     }
@@ -1729,7 +1765,7 @@ function ProductAdLibraryPanel({ draft, setDraft }: { draft: Swipe; setDraft: (s
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <MetricTile label="Anúncios atuais" value={total} />
         <MetricTile label="Pontos no gráfico" value={snapshots.length} />
-        <MetricTile label="Auto sync" value={draft.adLibrary.scrapeEnabled ? 1 : 0} />
+        <MetricTile label="Atualiza a cada" value={draft.adLibrary.scrapeEnabled ? 6 : 0} suffix="h" />
       </div>
       <div className="mt-4 h-64">
         <ResponsiveContainer width="100%" height="100%">
@@ -1759,17 +1795,29 @@ function ProductAdLibraryPanel({ draft, setDraft }: { draft: Swipe; setDraft: (s
         </span>
       </div>
       {draft.adLibrary.scrapeError && <p className="mt-3 text-xs leading-5 text-amber-200">{draft.adLibrary.scrapeError}</p>}
+      {isViewableCaptureUrl(draft.adLibrary.lastScreenshotUrl) && (
+        <a className="mt-3 block text-xs text-blue-300 hover:text-blue-200" href={draft.adLibrary.lastScreenshotUrl} target="_blank" rel="noreferrer">
+          Ver print da última leitura
+        </a>
+      )}
     </div>
   );
 }
 
-function MetricTile({ label, value }: { label: string; value: number }) {
+function MetricTile({ label, value, suffix = "" }: { label: string; value: number; suffix?: string }) {
   return (
     <div className="rounded-lg border border-[#1a2d55] bg-[#0b1730] p-3">
       <p className="text-xs text-slate-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-white">{value.toLocaleString("pt-BR")}</p>
+      <p className="mt-1 text-2xl font-semibold text-white">
+        {value.toLocaleString("pt-BR")}
+        {suffix}
+      </p>
     </div>
   );
+}
+
+function isViewableCaptureUrl(value: string) {
+  return value.startsWith("/captures/") || value.startsWith("https://") || value.startsWith("http://");
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {

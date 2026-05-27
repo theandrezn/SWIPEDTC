@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     const scraped = await scrapeMetaAdCountWithBrowser(url);
     const now = new Date().toISOString();
     const payload = swipe.payload ?? {};
-    const adLibrary = typeof payload.adLibrary === "object" && payload.adLibrary !== null ? payload.adLibrary : {};
+    const adLibrary = (typeof payload.adLibrary === "object" && payload.adLibrary !== null ? payload.adLibrary : {}) as Record<string, unknown>;
 
     if (scraped.adCount === null) {
       await admin
@@ -63,6 +63,7 @@ export async function POST(request: Request) {
               scrapeEnabled: true,
               lastScrapedAt: now,
               scrapeStatus: scraped.status,
+              lastScreenshotUrl: scraped.screenshotUrl || String(adLibrary.lastScreenshotUrl ?? ""),
               scrapeError: scraped.error,
             },
           },
@@ -85,6 +86,7 @@ export async function POST(request: Request) {
             scrapeEnabled: true,
             lastScrapedAt: now,
             scrapeStatus: "success",
+            lastScreenshotUrl: scraped.screenshotUrl || String(adLibrary.lastScreenshotUrl ?? ""),
             scrapeError: "",
           },
         },

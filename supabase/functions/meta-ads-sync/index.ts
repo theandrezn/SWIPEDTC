@@ -74,6 +74,7 @@ Deno.serve(async (request) => {
               scrapeEnabled: true,
               lastScrapedAt: now,
               scrapeStatus: scraped.status,
+              lastScreenshotUrl: "",
               scrapeError: scraped.error,
             },
           },
@@ -96,6 +97,7 @@ Deno.serve(async (request) => {
             scrapeEnabled: true,
             lastScrapedAt: now,
             scrapeStatus: "success",
+            lastScreenshotUrl: "",
             scrapeError: "",
           },
         },
@@ -226,5 +228,5 @@ function parseCount(value: string) {
   const digits = withoutThousands.replace(/\D/g, "");
   if (!digits) return null;
   const count = Number(digits);
-  return Number.isFinite(count) ? count : null;
+  return Number.isFinite(count) && count > 0 && count <= 50_000_000 ? count : null;
 }

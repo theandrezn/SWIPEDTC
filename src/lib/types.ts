@@ -125,6 +125,7 @@ export type SwipeAdLibrary = {
   lastScrapedAt: string;
   scrapeStatus: string;
   scrapeError: string;
+  lastScreenshotUrl: string;
   snapshots: SwipeAdLibrarySnapshot[];
 };
 
