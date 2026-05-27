@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "swipedtc",
-  "main": ".open-next/worker.js",
+  "main": "worker.ts",
   "compatibility_date": "2026-05-26",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
@@ -10,6 +10,9 @@
   },
   "browser": {
     "binding": "BROWSER"
+  },
+  "triggers": {
+    "crons": ["0 */6 * * *"]
   },
   "observability": {
     "enabled": true

@@ -45,6 +45,27 @@ npm run deploy
 
 O comando roda `opennextjs-cloudflare build` antes do deploy. Evite usar `npx wrangler deploy` como comando principal em um checkout limpo, porque ele pode tentar migrar o projeto automaticamente durante o build.
 
+### Sincronização automática da Meta Ads Library
+
+O Worker tem um `scheduled()` handler em `worker.ts` e um Cron Trigger em `wrangler.jsonc`:
+
+```jsonc
+"triggers": {
+  "crons": ["0 */6 * * *"]
+}
+```
+
+Depois do deploy, a Cloudflare executa `/api/ad-libraries/sync-meta` a cada 6 horas, mesmo com o PC desligado e sem Codex aberto. Para funcionar em produção, configure no Worker:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://rbsrgfaqmpoidudpsqyd.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+META_AD_SYNC_TOKEN=
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` é obrigatório para a rotina atualizar os swipes de todos os usuários. `META_AD_SYNC_TOKEN` é opcional, mas recomendado; quando configurado, a rota exige o header `x-sync-token` e o Cron interno envia esse token automaticamente.
+
 ## Captura de URL
 
 A rota `POST /api/capture` recebe:
@@ -66,6 +87,7 @@ Ela valida a URL, busca metadata Open Graph/HTML e tenta capturar screenshot rea
 NEXT_PUBLIC_SUPABASE_URL=https://rbsrgfaqmpoidudpsqyd.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+META_AD_SYNC_TOKEN=
 ```
 
 O schema inclui RLS para isolar dados por usuário.
