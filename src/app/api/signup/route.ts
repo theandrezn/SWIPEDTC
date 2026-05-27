@@ -10,21 +10,26 @@ const signupSchema = z.object({
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rbsrgfaqmpoidudpsqyd.supabase.co";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-export async function POST(request: Request) {
-  if (!serviceRoleKey) {
-    return NextResponse.json(
-      {
-        error:
-          "Cadastro sem limite de e-mail precisa da variável SUPABASE_SERVICE_ROLE_KEY no servidor.",
-      },
-      { status: 503 },
-    );
-  }
+async function createUserViaEdgeFunction(email: string, password: string) {
+  const response = await fetch(`${supabaseUrl}/functions/v1/admin-signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = (await response.json().catch(() => ({}))) as { error?: string; userId?: string };
+  return { response, data };
+}
 
+export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const parsed = signupSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Informe um e-mail válido e senha com no mínimo 6 caracteres." }, { status: 400 });
+  }
+
+  if (!serviceRoleKey) {
+    const { response, data } = await createUserViaEdgeFunction(parsed.data.email, parsed.data.password);
+    return NextResponse.json(data, { status: response.status });
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
