@@ -269,6 +269,7 @@ export default function Home() {
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   async function ensureUserProfile(user: User) {
     if (!supabase) return;
@@ -375,6 +376,7 @@ export default function Home() {
       if (!user) {
         window.localStorage.removeItem("dtc-swipe-hub-auth");
         setCurrentUserId(null);
+        setCurrentUser(null);
         setIsAuthenticated(false);
         setSwipes([]);
         setCollections([]);
@@ -384,6 +386,7 @@ export default function Home() {
       }
 
       setCurrentUserId(user.id);
+      setCurrentUser(user);
       window.localStorage.setItem("dtc-swipe-hub-auth", "true");
       await loadRemoteState(user);
       if (isMounted) setIsAuthenticated(true);
@@ -539,10 +542,12 @@ export default function Home() {
         }}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        user={currentUser}
         onLogout={() => {
           window.localStorage.removeItem("dtc-swipe-hub-auth");
           void supabase?.auth.signOut();
           setCurrentUserId(null);
+          setCurrentUser(null);
           setSwipes([]);
           setCollections([]);
           setFunnels([]);
@@ -857,14 +862,20 @@ function Sidebar({
   onSelect,
   open,
   onClose,
+  user,
   onLogout,
 }: {
   activeSection: string;
   onSelect: (section: string) => void;
   open: boolean;
   onClose: () => void;
+  user: User | null;
   onLogout: () => void;
 }) {
+  const userEmail = user?.email ?? "conta conectada";
+  const userName = user?.user_metadata?.name ?? userEmail.split("@")[0] ?? "Usuário";
+  const userInitial = userName.trim().charAt(0).toUpperCase() || "U";
+
   return (
     <>
       <div className={cn("fixed inset-0 z-40 bg-black/60 lg:hidden", open ? "block" : "hidden")} onClick={onClose} />
@@ -920,10 +931,10 @@ function Sidebar({
             <p className="mt-2 text-right text-xs text-slate-400">68 / 100K swipes</p>
           </div>
           <div className="flex items-center gap-3 rounded-lg bg-white/[0.04] p-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-700 text-sm font-semibold">D</div>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-700 text-sm font-semibold">{userInitial}</div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-white">Demo User</p>
-              <p className="truncate text-xs text-slate-500">demo@dtcswipehub.com</p>
+              <p className="truncate text-sm font-medium text-white">{userName}</p>
+              <p className="truncate text-xs text-slate-500">{userEmail}</p>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2">
