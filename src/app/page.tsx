@@ -4,6 +4,15 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   Bell,
   BookOpen,
   Boxes,
@@ -50,7 +59,7 @@ import {
   trafficSources,
 } from "@/lib/mock-data";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import type { Collection, Funnel, Swipe, SwipeStatus, SwipeType, ViewMode } from "@/lib/types";
+import type { AdLibrary, Collection, Funnel, Swipe, SwipeStatus, SwipeType, ViewMode } from "@/lib/types";
 import { cn, formatDate, safeUrl, uid } from "@/lib/utils";
 
 const navItems = [
@@ -59,6 +68,7 @@ const navItems = [
   { id: "Quiz", label: "Quizzes", icon: Gauge },
   { id: "Pagina de Venda", label: "Páginas de Venda", icon: BookOpen },
   { id: "Criativo", label: "Criativos", icon: ImagePlus },
+  { id: "ad-libraries", label: "Bibliotecas de Anúncios", icon: Link2 },
   { id: "collections", label: "Coleções por Nicho", icon: Folder },
 ];
 
@@ -153,6 +163,29 @@ type CollectionRow = {
   description: string | null;
   cover_url: string | null;
   payload: Partial<Collection> | null;
+  created_at: string;
+};
+
+type AdLibraryRow = {
+  id: string;
+  platform: string;
+  advertiser_name: string;
+  library_url: string;
+  niche: string | null;
+  geo: string | null;
+  status: string;
+  current_ad_count: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type AdLibrarySnapshotRow = {
+  id: string;
+  ad_library_id: string;
+  snapshot_date: string;
+  ad_count: number;
+  source: string;
   created_at: string;
 };
 
@@ -253,6 +286,49 @@ function collectionToRow(collection: Collection, userId: string) {
   };
 }
 
+function adLibraryFromRows(row: AdLibraryRow, snapshots: AdLibrarySnapshotRow[]): AdLibrary {
+  return {
+    id: row.id,
+    platform: row.platform,
+    advertiserName: row.advertiser_name,
+    libraryUrl: row.library_url,
+    niche: row.niche ?? "",
+    geo: row.geo ?? "",
+    status: row.status,
+    currentAdCount: row.current_ad_count,
+    notes: row.notes ?? "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    snapshots: snapshots
+      .filter((snapshot) => snapshot.ad_library_id === row.id)
+      .map((snapshot) => ({
+        id: snapshot.id,
+        adLibraryId: snapshot.ad_library_id,
+        snapshotDate: snapshot.snapshot_date,
+        adCount: snapshot.ad_count,
+        source: snapshot.source,
+        createdAt: snapshot.created_at,
+      })),
+  };
+}
+
+function adLibraryToRow(library: AdLibrary, userId: string) {
+  return {
+    id: library.id,
+    user_id: userId,
+    platform: library.platform,
+    advertiser_name: library.advertiserName,
+    library_url: library.libraryUrl,
+    niche: library.niche || null,
+    geo: library.geo || null,
+    status: library.status,
+    current_ad_count: library.currentAdCount,
+    notes: library.notes || null,
+    created_at: library.createdAt,
+    updated_at: library.updatedAt,
+  };
+}
+
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -264,6 +340,7 @@ export default function Home() {
   const [swipes, setSwipes] = useState<Swipe[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [funnels, setFunnels] = useState<Funnel[]>([]);
+  const [adLibraries, setAdLibraries] = useState<AdLibrary[]>([]);
   const [selectedSwipeId, setSelectedSwipeId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [collectionOpen, setCollectionOpen] = useState(false);
@@ -285,21 +362,26 @@ export default function Home() {
     if (!supabase) return;
     await ensureUserProfile(user);
 
-    const [swipeResult, collectionResult] = await Promise.all([
+    const [swipeResult, collectionResult, adLibraryResult, adSnapshotResult] = await Promise.all([
       supabase.from("swipes").select("*").order("created_at", { ascending: false }),
       supabase.from("collections").select("*").order("created_at", { ascending: false }),
+      supabase.from("ad_libraries").select("*").order("updated_at", { ascending: false }),
+      supabase.from("ad_library_snapshots").select("*").order("snapshot_date", { ascending: true }),
     ]);
 
-    if (swipeResult.error || collectionResult.error) {
-      console.error("Supabase sync error", swipeResult.error ?? collectionResult.error);
+    if (swipeResult.error || collectionResult.error || adLibraryResult.error || adSnapshotResult.error) {
+      console.error("Supabase sync error", swipeResult.error ?? collectionResult.error ?? adLibraryResult.error ?? adSnapshotResult.error);
       showToast("Não foi possível carregar seus dados do Supabase.");
       return;
     }
 
     const remoteSwipes = ((swipeResult.data ?? []) as SwipeRow[]).map(swipeFromRow);
     const remoteCollections = ((collectionResult.data ?? []) as CollectionRow[]).map(collectionFromRow);
+    const remoteSnapshots = (adSnapshotResult.data ?? []) as AdLibrarySnapshotRow[];
+    const remoteAdLibraries = ((adLibraryResult.data ?? []) as AdLibraryRow[]).map((library) => adLibraryFromRows(library, remoteSnapshots));
     setSwipes(remoteSwipes);
     setCollections(remoteCollections);
+    setAdLibraries(remoteAdLibraries);
     setFunnels([]);
     setSelectedSwipeId(null);
   }
@@ -344,6 +426,42 @@ export default function Home() {
       });
   }
 
+  function syncAdLibrary(library: AdLibrary) {
+    if (!supabase || !currentUserId) return;
+    void supabase
+      .from("ad_libraries")
+      .upsert(adLibraryToRow(library, currentUserId))
+      .then(({ error }) => {
+        if (error) {
+          console.error("Ad library sync error", error);
+          showToast("Não foi possível sincronizar a biblioteca.");
+        }
+      });
+  }
+
+  function syncAdLibrarySnapshot(libraryId: string, adCount: number, source = "manual") {
+    if (!supabase || !currentUserId) return;
+    const snapshotDate = new Date().toISOString().slice(0, 10);
+    void supabase
+      .from("ad_library_snapshots")
+      .upsert(
+        {
+          ad_library_id: libraryId,
+          user_id: currentUserId,
+          snapshot_date: snapshotDate,
+          ad_count: adCount,
+          source,
+        },
+        { onConflict: "ad_library_id,snapshot_date" },
+      )
+      .then(({ error }) => {
+        if (error) {
+          console.error("Ad library snapshot sync error", error);
+          showToast("Não foi possível salvar o ponto do gráfico.");
+        }
+      });
+  }
+
   useEffect(() => {
     let isMounted = true;
 
@@ -357,10 +475,11 @@ export default function Home() {
         window.localStorage.setItem("dtc-swipe-hub-state-version", storageVersion);
       }
       if (saved) {
-        const parsed = JSON.parse(saved) as { swipes: Swipe[]; collections: Collection[]; funnels: Funnel[] };
+        const parsed = JSON.parse(saved) as { swipes: Swipe[]; collections: Collection[]; funnels: Funnel[]; adLibraries?: AdLibrary[] };
         setSwipes(parsed.swipes);
         setCollections(parsed.collections);
         setFunnels(parsed.funnels);
+        setAdLibraries(parsed.adLibraries ?? []);
         setSelectedSwipeId(null);
       }
       setIsAuthenticated(auth === "true");
@@ -380,6 +499,7 @@ export default function Home() {
         setIsAuthenticated(false);
         setSwipes([]);
         setCollections([]);
+        setAdLibraries([]);
         setFunnels([]);
         setSelectedSwipeId(null);
         return;
@@ -410,8 +530,8 @@ export default function Home() {
 
   useEffect(() => {
     window.localStorage.setItem("dtc-swipe-hub-state-version", storageVersion);
-    window.localStorage.setItem("dtc-swipe-hub-state", JSON.stringify({ swipes, collections, funnels }));
-  }, [swipes, collections, funnels]);
+    window.localStorage.setItem("dtc-swipe-hub-state", JSON.stringify({ swipes, collections, funnels, adLibraries }));
+  }, [swipes, collections, funnels, adLibraries]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -550,6 +670,7 @@ export default function Home() {
           setCurrentUser(null);
           setSwipes([]);
           setCollections([]);
+          setAdLibraries([]);
           setFunnels([]);
           setSelectedSwipeId(null);
           setIsAuthenticated(false);
@@ -616,6 +737,21 @@ export default function Home() {
 
               {activeSection === "collections" && (
                 <CollectionsView collections={collections} swipes={swipes} onCreate={() => setCollectionOpen(true)} />
+              )}
+
+              {activeSection === "ad-libraries" && (
+                <AdLibrariesView
+                  libraries={adLibraries}
+                  onSave={(library) => {
+                    setAdLibraries((current) => {
+                      const exists = current.some((item) => item.id === library.id);
+                      return exists ? current.map((item) => (item.id === library.id ? library : item)) : [library, ...current];
+                    });
+                    syncAdLibrary(library);
+                    syncAdLibrarySnapshot(library.id, library.currentAdCount, "manual");
+                    showToast("Biblioteca de anúncios salva.");
+                  }}
+                />
               )}
 
               {selectedSwipe && visibleLibrarySections.includes(activeSection) && (
@@ -1903,6 +2039,199 @@ function CollectionModal({
         </button>
       </div>
     </Modal>
+  );
+}
+
+function AdLibrariesView({
+  libraries,
+  onSave,
+}: {
+  libraries: AdLibrary[];
+  onSave: (library: AdLibrary) => void;
+}) {
+  const [form, setForm] = useState({
+    platform: "Meta Ads Library",
+    advertiserName: "",
+    libraryUrl: "",
+    niche: "Skincare",
+    geo: "BR",
+    status: "Ativo",
+    currentAdCount: "0",
+    notes: "",
+  });
+  const totalAds = libraries.reduce((sum, library) => sum + library.currentAdCount, 0);
+  const latestSnapshots = libraries.flatMap((library) =>
+    library.snapshots.map((snapshot) => ({
+      date: snapshot.snapshotDate,
+      ads: snapshot.adCount,
+      name: library.advertiserName,
+    })),
+  );
+  const chartData = latestSnapshots.length > 0
+    ? Object.values(
+        latestSnapshots.reduce<Record<string, { date: string; ads: number }>>((acc, point) => {
+          acc[point.date] = { date: point.date, ads: (acc[point.date]?.ads ?? 0) + point.ads };
+          return acc;
+        }, {}),
+      )
+    : [{ date: new Date().toISOString().slice(0, 10), ads: totalAds }];
+
+  function submit() {
+    const url = safeUrl(form.libraryUrl);
+    if (!url) return;
+    const now = new Date().toISOString();
+    const id = createRecordId("ad-library");
+    const adCount = Math.max(0, Number(form.currentAdCount) || 0);
+    onSave({
+      id,
+      platform: form.platform,
+      advertiserName: form.advertiserName || getDomain(url),
+      libraryUrl: url,
+      niche: form.niche,
+      geo: form.geo,
+      status: form.status,
+      currentAdCount: adCount,
+      notes: form.notes,
+      createdAt: now,
+      updatedAt: now,
+      snapshots: [
+        {
+          id: createRecordId("ad-library-snapshot"),
+          adLibraryId: id,
+          snapshotDate: now.slice(0, 10),
+          adCount,
+          source: "manual",
+          createdAt: now,
+        },
+      ],
+    });
+    setForm({ ...form, advertiserName: "", libraryUrl: "", currentAdCount: "0", notes: "" });
+  }
+
+  return (
+    <section className="space-y-4">
+      <PageHeading
+        title="Bibliotecas de Anúncios"
+        description="Cadastre links de bibliotecas e acompanhe diariamente a quantidade de anúncios ativos."
+      />
+      <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
+        <Panel title="Nova biblioteca">
+          <div className="space-y-3">
+            <SelectField label="Plataforma" value={form.platform} onChange={(value) => setForm({ ...form, platform: value })} options={platforms} />
+            <Field label="Nome do anunciante" value={form.advertiserName} onChange={(value) => setForm({ ...form, advertiserName: value })} placeholder="Marca ou advertiser" />
+            <Field label="Link da biblioteca" value={form.libraryUrl} onChange={(value) => setForm({ ...form, libraryUrl: value })} placeholder="https://..." />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SelectField label="Nicho" value={form.niche} onChange={(value) => setForm({ ...form, niche: value })} options={niches} />
+              <SelectField label="GEO" value={form.geo} onChange={(value) => setForm({ ...form, geo: value })} options={geos} />
+            </div>
+            <Field label="Anúncios ativos hoje" value={form.currentAdCount} onChange={(value) => setForm({ ...form, currentAdCount: value.replace(/\D/g, "") })} placeholder="0" />
+            <TextArea label="Observações" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
+            <button onClick={submit} className="h-10 w-full rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 px-4 text-sm font-semibold">
+              Salvar biblioteca
+            </button>
+          </div>
+        </Panel>
+        <div className="space-y-4">
+          <Panel title="Evolução diária de anúncios">
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              <MetricTile label="Bibliotecas" value={libraries.length} />
+              <MetricTile label="Anúncios ativos" value={totalAds} />
+              <MetricTile label="Snapshots" value={latestSnapshots.length} />
+            </div>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="adCountGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8B5CFF" stopOpacity={0.55} />
+                      <stop offset="95%" stopColor="#2563FF" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="#1A2D55" strokeDasharray="3 3" />
+                  <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ background: "#081327", border: "1px solid #1A2D55", borderRadius: 8, color: "#fff" }} />
+                  <Area type="monotone" dataKey="ads" stroke="#8B5CFF" strokeWidth={2} fill="url(#adCountGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Panel>
+          <div className="grid gap-3">
+            {libraries.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-[#1a2d55] bg-[#081327] p-8 text-center">
+                <Link2 className="mx-auto mb-3 h-8 w-8 text-slate-500" />
+                <h3 className="text-lg font-semibold text-white">Nenhuma biblioteca cadastrada.</h3>
+                <p className="mt-2 text-sm text-slate-400">Adicione o primeiro link para começar o histórico diário.</p>
+              </div>
+            ) : (
+              libraries.map((library) => <AdLibraryCard key={library.id} library={library} onSave={onSave} />)
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-[#1a2d55] bg-[#0b1730] p-3">
+      <p className="text-xs text-slate-400">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-white">{value.toLocaleString("pt-BR")}</p>
+    </div>
+  );
+}
+
+function AdLibraryCard({ library, onSave }: { library: AdLibrary; onSave: (library: AdLibrary) => void }) {
+  const [count, setCount] = useState(String(library.currentAdCount));
+  const latest = library.snapshots.at(-1);
+  return (
+    <div className="rounded-xl border border-[#1a2d55] bg-[#081327] p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <CategoryBadge label={library.platform} />
+            <StatusBadge status={library.status as SwipeStatus} />
+          </div>
+          <h3 className="mt-3 truncate text-lg font-semibold text-white">{library.advertiserName}</h3>
+          <p className="mt-1 text-sm text-slate-400">{library.niche} · {library.geo}</p>
+          <a href={library.libraryUrl} target="_blank" rel="noreferrer" className="mt-2 block truncate text-xs text-blue-300 hover:text-blue-200">
+            {library.libraryUrl}
+          </a>
+        </div>
+        <div className="w-full sm:w-44">
+          <Field label="Anúncios ativos" value={count} onChange={(value) => setCount(value.replace(/\D/g, ""))} />
+          <button
+            onClick={() => {
+              const now = new Date().toISOString();
+              const adCount = Math.max(0, Number(count) || 0);
+              onSave({
+                ...library,
+                currentAdCount: adCount,
+                updatedAt: now,
+                snapshots: [
+                  ...library.snapshots.filter((snapshot) => snapshot.snapshotDate !== now.slice(0, 10)),
+                  {
+                    id: createRecordId("ad-library-snapshot"),
+                    adLibraryId: library.id,
+                    snapshotDate: now.slice(0, 10),
+                    adCount,
+                    source: "manual",
+                    createdAt: now,
+                  },
+                ],
+              });
+            }}
+            className="mt-2 h-9 w-full rounded-lg border border-[#8b5cff]/40 bg-[#8b5cff]/12 text-xs font-semibold text-violet-100 hover:bg-[#8b5cff]/20"
+          >
+            Atualizar contagem
+          </button>
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-slate-500">
+        Último ponto: {latest ? `${latest.adCount.toLocaleString("pt-BR")} anúncios em ${formatDate(latest.snapshotDate)}` : "sem snapshot ainda"}
+      </p>
+    </div>
   );
 }
 

@@ -142,3 +142,27 @@ export type Funnel = {
   steps: FunnelStep[];
   createdAt: string;
 };
+
+export type AdLibrarySnapshot = {
+  id: string;
+  adLibraryId: string;
+  snapshotDate: string;
+  adCount: number;
+  source: string;
+  createdAt: string;
+};
+
+export type AdLibrary = {
+  id: string;
+  platform: string;
+  advertiserName: string;
+  libraryUrl: string;
+  niche: string;
+  geo: string;
+  status: string;
+  currentAdCount: number;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  snapshots: AdLibrarySnapshot[];
+};

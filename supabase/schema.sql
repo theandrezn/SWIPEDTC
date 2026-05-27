@@ -1,4 +1,8 @@
 create extension if not exists "pgcrypto";
+create extension if not exists pg_cron with schema pg_catalog;
+
+grant usage on schema cron to postgres;
+grant all privileges on all tables in schema cron to postgres;
 
 create table if not exists public.users (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -117,6 +121,32 @@ create table if not exists public.collections (
   payload jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table if not exists public.ad_libraries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  platform text not null,
+  advertiser_name text not null,
+  library_url text not null,
+  niche text,
+  geo text,
+  status text not null default 'Ativo',
+  current_ad_count integer not null default 0 check (current_ad_count >= 0),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.ad_library_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  ad_library_id uuid not null references public.ad_libraries(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  snapshot_date date not null default current_date,
+  ad_count integer not null default 0 check (ad_count >= 0),
+  source text not null default 'manual',
+  created_at timestamptz not null default now(),
+  unique(ad_library_id, snapshot_date)
 );
 
 create table if not exists public.collection_swipes (
@@ -242,10 +272,34 @@ create trigger set_collections_updated_at
   before update on public.collections
   for each row execute function public.set_updated_at();
 
+drop trigger if exists set_ad_libraries_updated_at on public.ad_libraries;
+create trigger set_ad_libraries_updated_at
+  before update on public.ad_libraries
+  for each row execute function public.set_updated_at();
+
 drop trigger if exists set_funnels_updated_at on public.funnels;
 create trigger set_funnels_updated_at
   before update on public.funnels
   for each row execute function public.set_updated_at();
+
+create or replace function public.snapshot_ad_libraries_daily()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.ad_library_snapshots (ad_library_id, user_id, snapshot_date, ad_count, source)
+  select id, user_id, current_date, current_ad_count, 'daily_snapshot'
+  from public.ad_libraries
+  where status = 'Ativo'
+  on conflict (ad_library_id, snapshot_date)
+  do update set
+    ad_count = excluded.ad_count,
+    source = excluded.source,
+    created_at = now();
+$$;
+
+revoke all on function public.snapshot_ad_libraries_daily() from public, anon, authenticated;
 
 alter table public.users enable row level security;
 alter table public.swipes enable row level security;
@@ -253,6 +307,8 @@ alter table public.swipe_analysis enable row level security;
 alter table public.swipe_features enable row level security;
 alter table public.metrics enable row level security;
 alter table public.collections enable row level security;
+alter table public.ad_libraries enable row level security;
+alter table public.ad_library_snapshots enable row level security;
 alter table public.collection_swipes enable row level security;
 alter table public.funnels enable row level security;
 alter table public.funnel_steps enable row level security;
@@ -277,6 +333,26 @@ create policy "users own collections" on public.collections
   for all to authenticated
   using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id);
+
+drop policy if exists "users own ad libraries" on public.ad_libraries;
+create policy "users own ad libraries" on public.ad_libraries
+  for all to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "users own ad library snapshots" on public.ad_library_snapshots;
+create policy "users own ad library snapshots" on public.ad_library_snapshots
+  for all to authenticated
+  using ((select auth.uid()) = user_id)
+  with check (
+    (select auth.uid()) = user_id
+    and exists (
+      select 1
+      from public.ad_libraries l
+      where l.id = ad_library_id
+        and l.user_id = (select auth.uid())
+    )
+  );
 
 drop policy if exists "users own funnels" on public.funnels;
 create policy "users own funnels" on public.funnels
@@ -347,6 +423,10 @@ create index if not exists swipe_analysis_swipe_id_idx on public.swipe_analysis(
 create index if not exists swipe_features_swipe_id_idx on public.swipe_features(swipe_id);
 create index if not exists metrics_swipe_id_idx on public.metrics(swipe_id);
 create index if not exists collections_user_id_idx on public.collections(user_id);
+create index if not exists ad_libraries_user_id_idx on public.ad_libraries(user_id);
+create index if not exists ad_libraries_user_updated_idx on public.ad_libraries(user_id, updated_at desc);
+create index if not exists ad_library_snapshots_user_date_idx on public.ad_library_snapshots(user_id, snapshot_date);
+create index if not exists ad_library_snapshots_library_date_idx on public.ad_library_snapshots(ad_library_id, snapshot_date);
 create index if not exists collection_swipes_swipe_id_idx on public.collection_swipes(swipe_id);
 create index if not exists funnels_user_id_idx on public.funnels(user_id);
 create index if not exists funnel_steps_order_idx on public.funnel_steps(funnel_id, step_order);
@@ -402,3 +482,12 @@ create policy "users can delete own screenshots" on storage.objects
     bucket_id = 'swipe-screenshots'
     and (storage.foldername(name))[1] = (select auth.uid())::text
   );
+
+select cron.schedule(
+  'snapshot-ad-libraries-daily',
+  '5 8 * * *',
+  $$select public.snapshot_ad_libraries_daily();$$
+)
+where not exists (
+  select 1 from cron.job where jobname = 'snapshot-ad-libraries-daily'
+);
