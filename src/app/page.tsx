@@ -175,6 +175,11 @@ type AdLibraryRow = {
   geo: string | null;
   status: string;
   current_ad_count: number;
+  meta_page_id: string | null;
+  scrape_enabled: boolean | null;
+  last_scraped_at: string | null;
+  scrape_status: string | null;
+  scrape_error: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -296,6 +301,11 @@ function adLibraryFromRows(row: AdLibraryRow, snapshots: AdLibrarySnapshotRow[])
     geo: row.geo ?? "",
     status: row.status,
     currentAdCount: row.current_ad_count,
+    metaPageId: row.meta_page_id ?? "",
+    scrapeEnabled: row.scrape_enabled ?? true,
+    lastScrapedAt: row.last_scraped_at ?? "",
+    scrapeStatus: row.scrape_status ?? "manual",
+    scrapeError: row.scrape_error ?? "",
     notes: row.notes ?? "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -323,6 +333,11 @@ function adLibraryToRow(library: AdLibrary, userId: string) {
     geo: library.geo || null,
     status: library.status,
     current_ad_count: library.currentAdCount,
+    meta_page_id: library.metaPageId || null,
+    scrape_enabled: library.scrapeEnabled,
+    last_scraped_at: library.lastScrapedAt || null,
+    scrape_status: library.scrapeStatus || null,
+    scrape_error: library.scrapeError || null,
     notes: library.notes || null,
     created_at: library.createdAt,
     updated_at: library.updatedAt,
@@ -748,7 +763,7 @@ export default function Home() {
                       return exists ? current.map((item) => (item.id === library.id ? library : item)) : [library, ...current];
                     });
                     syncAdLibrary(library);
-                    syncAdLibrarySnapshot(library.id, library.currentAdCount, "manual");
+                    syncAdLibrarySnapshot(library.id, library.currentAdCount, library.snapshots.at(-1)?.source ?? "manual");
                     showToast("Biblioteca de anúncios salva.");
                   }}
                 />
@@ -2091,6 +2106,11 @@ function AdLibrariesView({
       geo: form.geo,
       status: form.status,
       currentAdCount: adCount,
+      metaPageId: "",
+      scrapeEnabled: form.platform === "Meta Ads Library",
+      lastScrapedAt: "",
+      scrapeStatus: "manual",
+      scrapeError: "",
       notes: form.notes,
       createdAt: now,
       updatedAt: now,
@@ -2126,6 +2146,9 @@ function AdLibrariesView({
             </div>
             <Field label="Anúncios ativos hoje" value={form.currentAdCount} onChange={(value) => setForm({ ...form, currentAdCount: value.replace(/\D/g, "") })} placeholder="0" />
             <TextArea label="Observações" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
+            <div className="rounded-lg border border-[#1a2d55] bg-[#050b1d] p-3 text-xs leading-5 text-slate-400">
+              Bibliotecas da Meta são sincronizadas automaticamente uma vez por dia. O botão no card também tenta capturar a contagem na hora.
+            </div>
             <button onClick={submit} className="h-10 w-full rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 px-4 text-sm font-semibold">
               Salvar biblioteca
             </button>
@@ -2184,7 +2207,65 @@ function MetricTile({ label, value }: { label: string; value: number }) {
 
 function AdLibraryCard({ library, onSave }: { library: AdLibrary; onSave: (library: AdLibrary) => void }) {
   const [count, setCount] = useState(String(library.currentAdCount));
+  const [syncing, setSyncing] = useState(false);
   const latest = library.snapshots.at(-1);
+  const isMeta = library.platform === "Meta Ads Library" || library.libraryUrl.includes("facebook.com/ads/library");
+
+  async function syncMetaNow() {
+    setSyncing(true);
+    try {
+      const response = await fetch("/api/meta-ad-count", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: library.libraryUrl }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        adCount?: number | null;
+        status?: string;
+        source?: string;
+        pageId?: string;
+        error?: string;
+      };
+      const now = new Date().toISOString();
+
+      if (!response.ok || result.adCount == null) {
+        onSave({
+          ...library,
+          metaPageId: result.pageId ?? library.metaPageId,
+          lastScrapedAt: now,
+          scrapeStatus: result.status ?? "error",
+          scrapeError: result.error ?? "Não foi possível capturar a contagem da Meta.",
+          updatedAt: now,
+        });
+        return;
+      }
+
+      setCount(String(result.adCount));
+      onSave({
+        ...library,
+        currentAdCount: result.adCount,
+        metaPageId: result.pageId ?? library.metaPageId,
+        lastScrapedAt: now,
+        scrapeStatus: "success",
+        scrapeError: "",
+        updatedAt: now,
+        snapshots: [
+          ...library.snapshots.filter((snapshot) => snapshot.snapshotDate !== now.slice(0, 10)),
+          {
+            id: createRecordId("ad-library-snapshot"),
+            adLibraryId: library.id,
+            snapshotDate: now.slice(0, 10),
+            adCount: result.adCount,
+            source: result.source ?? "meta_html_total",
+            createdAt: now,
+          },
+        ],
+      });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <div className="rounded-xl border border-[#1a2d55] bg-[#081327] p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2195,9 +2276,20 @@ function AdLibraryCard({ library, onSave }: { library: AdLibrary; onSave: (libra
           </div>
           <h3 className="mt-3 truncate text-lg font-semibold text-white">{library.advertiserName}</h3>
           <p className="mt-1 text-sm text-slate-400">{library.niche} · {library.geo}</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-medium">
+            <span className="rounded-full border border-[#1a2d55] bg-[#050b1d] px-2 py-1 text-slate-400">
+              Auto sync: {library.scrapeEnabled ? "ativo" : "pausado"}
+            </span>
+            {library.lastScrapedAt && (
+              <span className="rounded-full border border-[#1a2d55] bg-[#050b1d] px-2 py-1 text-slate-400">
+                Último scraping: {formatDate(library.lastScrapedAt)}
+              </span>
+            )}
+          </div>
           <a href={library.libraryUrl} target="_blank" rel="noreferrer" className="mt-2 block truncate text-xs text-blue-300 hover:text-blue-200">
             {library.libraryUrl}
           </a>
+          {library.scrapeError && <p className="mt-2 text-xs leading-5 text-amber-200">{library.scrapeError}</p>}
         </div>
         <div className="w-full sm:w-44">
           <Field label="Anúncios ativos" value={count} onChange={(value) => setCount(value.replace(/\D/g, ""))} />
@@ -2208,6 +2300,8 @@ function AdLibraryCard({ library, onSave }: { library: AdLibrary; onSave: (libra
               onSave({
                 ...library,
                 currentAdCount: adCount,
+                scrapeStatus: "manual",
+                scrapeError: "",
                 updatedAt: now,
                 snapshots: [
                   ...library.snapshots.filter((snapshot) => snapshot.snapshotDate !== now.slice(0, 10)),
@@ -2226,6 +2320,15 @@ function AdLibraryCard({ library, onSave }: { library: AdLibrary; onSave: (libra
           >
             Atualizar contagem
           </button>
+          {isMeta && (
+            <button
+              onClick={syncMetaNow}
+              disabled={syncing}
+              className="mt-2 h-9 w-full rounded-lg border border-[#22d3ee]/30 bg-[#22d3ee]/10 text-xs font-semibold text-cyan-100 hover:bg-[#22d3ee]/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {syncing ? "Sincronizando..." : "Sincronizar Meta agora"}
+            </button>
+          )}
         </div>
       </div>
       <p className="mt-3 text-xs text-slate-500">

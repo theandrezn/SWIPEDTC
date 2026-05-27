@@ -161,6 +161,11 @@ export type AdLibrary = {
   geo: string;
   status: string;
   currentAdCount: number;
+  metaPageId: string;
+  scrapeEnabled: boolean;
+  lastScrapedAt: string;
+  scrapeStatus: string;
+  scrapeError: string;
   notes: string;
   createdAt: string;
   updatedAt: string;

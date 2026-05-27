@@ -133,6 +133,11 @@ create table if not exists public.ad_libraries (
   geo text,
   status text not null default 'Ativo',
   current_ad_count integer not null default 0 check (current_ad_count >= 0),
+  meta_page_id text,
+  scrape_enabled boolean not null default true,
+  last_scraped_at timestamptz,
+  scrape_status text not null default 'manual',
+  scrape_error text,
   notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -210,6 +215,11 @@ create table if not exists public.attachments (
 alter table public.swipes add column if not exists payload jsonb not null default '{}'::jsonb;
 alter table public.collections add column if not exists payload jsonb not null default '{}'::jsonb;
 alter table public.funnels add column if not exists payload jsonb not null default '{}'::jsonb;
+alter table public.ad_libraries add column if not exists meta_page_id text;
+alter table public.ad_libraries add column if not exists scrape_enabled boolean not null default true;
+alter table public.ad_libraries add column if not exists last_scraped_at timestamptz;
+alter table public.ad_libraries add column if not exists scrape_status text not null default 'manual';
+alter table public.ad_libraries add column if not exists scrape_error text;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -425,6 +435,7 @@ create index if not exists metrics_swipe_id_idx on public.metrics(swipe_id);
 create index if not exists collections_user_id_idx on public.collections(user_id);
 create index if not exists ad_libraries_user_id_idx on public.ad_libraries(user_id);
 create index if not exists ad_libraries_user_updated_idx on public.ad_libraries(user_id, updated_at desc);
+create index if not exists ad_libraries_meta_sync_idx on public.ad_libraries(platform, scrape_enabled, status);
 create index if not exists ad_library_snapshots_user_date_idx on public.ad_library_snapshots(user_id, snapshot_date);
 create index if not exists ad_library_snapshots_library_date_idx on public.ad_library_snapshots(ad_library_id, snapshot_date);
 create index if not exists collection_swipes_swipe_id_idx on public.collection_swipes(swipe_id);
