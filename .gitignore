@@ -29,6 +29,7 @@ preview-*.png
 public/captures/
 .agents/
 skills-lock.json
+supabase/.temp/
 
 # debug
 npm-debug.log*

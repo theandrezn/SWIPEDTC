@@ -657,10 +657,27 @@ export default function Home() {
 
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("demo@dtcswipehub.com");
-  const [password, setPassword] = useState("demo1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+
+  function authErrorMessage(message: string) {
+    const normalized = message.toLowerCase();
+    if (normalized.includes("invalid")) {
+      return "Use um e-mail real e válido. O Supabase pode recusar domínios falsos ou sem validação.";
+    }
+    if (normalized.includes("rate limit")) {
+      return "Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.";
+    }
+    if (normalized.includes("already registered") || normalized.includes("already exists")) {
+      return "Esse e-mail já tem conta. Use a aba Entrar para acessar.";
+    }
+    if (normalized.includes("invalid login credentials")) {
+      return "E-mail ou senha incorretos.";
+    }
+    return message;
+  }
 
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -679,7 +696,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           : await supabase.auth.signInWithPassword({ email, password });
 
       if (result.error) {
-        setAuthMessage(result.error.message);
+        setAuthMessage(authErrorMessage(result.error.message));
         return;
       }
 
@@ -732,14 +749,22 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           <div className="mt-5 grid grid-cols-2 rounded-lg border border-[#1a2d55] bg-[#050b1d] p-1">
             <button
               type="button"
-              onClick={() => setAuthMode("signin")}
+              aria-label="Alternar para entrar"
+              onClick={() => {
+                setAuthMode("signin");
+                setAuthMessage("");
+              }}
               className={cn("h-9 rounded-md text-sm font-semibold transition", authMode === "signin" ? "bg-[#2563ff] text-white" : "text-slate-400 hover:text-white")}
             >
               Entrar
             </button>
             <button
               type="button"
-              onClick={() => setAuthMode("signup")}
+              aria-label="Alternar para criar conta"
+              onClick={() => {
+                setAuthMode("signup");
+                setAuthMessage("");
+              }}
               className={cn("h-9 rounded-md text-sm font-semibold transition", authMode === "signup" ? "bg-[#2563ff] text-white" : "text-slate-400 hover:text-white")}
             >
               Criar conta
@@ -752,8 +777,12 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              placeholder="seuemail@gmail.com"
               className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-[#0b0f17] px-3 text-sm outline-none ring-blue-500/0 transition focus:ring-2"
             />
+            {authMode === "signup" && (
+              <span className="mt-1 block text-xs text-slate-500">Use um e-mail real. Domínios falsos podem ser recusados pelo Supabase.</span>
+            )}
           </label>
           <label className="mt-4 block text-sm text-slate-300">
             Senha
@@ -763,15 +792,17 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               minLength={6}
+              placeholder="Mínimo 6 caracteres"
               className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-[#0b0f17] px-3 text-sm outline-none ring-blue-500/0 transition focus:ring-2"
             />
           </label>
           <button
             disabled={authLoading}
+            aria-label={authMode === "signin" ? "Entrar no Hub" : "Criar minha conta"}
             className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 text-sm font-semibold text-white shadow-lg shadow-blue-950/40 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {authLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-            {authMode === "signin" ? "Entrar no Hub" : "Criar conta"}
+            {authMode === "signin" ? "Entrar no Hub" : "Criar minha conta"}
           </button>
           <div
             className={cn(
