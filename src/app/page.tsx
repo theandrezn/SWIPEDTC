@@ -57,9 +57,9 @@ const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "Advertorial", label: "Advertorials", icon: FileText },
   { id: "Quiz", label: "Quizzes", icon: Gauge },
-  { id: "Pagina de Venda", label: "PÃ¡ginas de Venda", icon: BookOpen },
+  { id: "Pagina de Venda", label: "Páginas de Venda", icon: BookOpen },
   { id: "Criativo", label: "Criativos", icon: ImagePlus },
-  { id: "collections", label: "ColeÃ§Ãµes por Nicho", icon: Folder },
+  { id: "collections", label: "Coleções por Nicho", icon: Folder },
 ];
 
 const visibleLibrarySections = ["Advertorial", "Quiz", "Pagina de Venda", "Criativo"];
@@ -76,14 +76,14 @@ const featureLabels: Array<[keyof Swipe["features"], string]> = [
   ["hasExpert", "Especialista"],
   ["hasStudies", "Estudos"],
   ["hasGuarantee", "Garantia"],
-  ["hasBonuses", "BÃ´nus"],
+  ["hasBonuses", "Bônus"],
   ["hasFaq", "FAQ"],
-  ["hasComparison", "ComparaÃ§Ã£o"],
-  ["hasPriceAnchor", "Ancoragem de preÃ§o"],
+  ["hasComparison", "Comparação"],
+  ["hasPriceAnchor", "Ancoragem de preço"],
   ["hasLimitedOffer", "Oferta limitada"],
   ["hasRepeatedCta", "CTA repetido"],
   ["hasStickyBar", "Sticky bar"],
-  ["hasVsl", "VÃ­deo/VSL"],
+  ["hasVsl", "Vídeo/VSL"],
   ["hasQuiz", "Quiz"],
   ["hasExternalCheckout", "Checkout externo"],
   ["hasOrderBump", "Order bump"],
@@ -300,7 +300,7 @@ export default function Home() {
     setSwipes(remoteSwipes);
     setCollections(remoteCollections);
     setFunnels([]);
-    setSelectedSwipeId(remoteSwipes[0]?.id ?? null);
+    setSelectedSwipeId(null);
   }
 
   function syncSwipe(swipe: Swipe) {
@@ -360,7 +360,7 @@ export default function Home() {
         setSwipes(parsed.swipes);
         setCollections(parsed.collections);
         setFunnels(parsed.funnels);
-        setSelectedSwipeId(parsed.swipes[0]?.id ?? null);
+        setSelectedSwipeId(null);
       }
       setIsAuthenticated(auth === "true");
     }
@@ -420,7 +420,7 @@ export default function Home() {
     window.history.replaceState(null, "", next);
   }, [query, filters]);
 
-  const selectedSwipe = swipes.find((swipe) => swipe.id === selectedSwipeId) ?? swipes[0];
+  const selectedSwipe = selectedSwipeId ? swipes.find((swipe) => swipe.id === selectedSwipeId) : undefined;
 
   const filteredSwipes = useMemo(() => {
     const sectionType = visibleLibrarySections.includes(activeSection) ? activeSection : "";
@@ -468,11 +468,11 @@ export default function Home() {
     const byType = (type: SwipeType) => swipes.filter((swipe) => swipe.type === type).length;
     return [
       { label: "Total", value: swipes.length, icon: Boxes, tone: "from-blue-500 to-cyan-400", section: "dashboard" },
-      { label: "PÃ¡ginas de Venda", value: byType("Pagina de Venda"), icon: BookOpen, tone: "from-sky-500 to-blue-400", section: "Pagina de Venda" },
+      { label: "Páginas de Venda", value: byType("Pagina de Venda"), icon: BookOpen, tone: "from-sky-500 to-blue-400", section: "Pagina de Venda" },
       { label: "Quizzes", value: byType("Quiz"), icon: Gauge, tone: "from-emerald-500 to-teal-400", section: "Quiz" },
       { label: "Criativos", value: byType("Criativo"), icon: ImagePlus, tone: "from-amber-500 to-orange-400", section: "Criativo" },
       { label: "Advertorials", value: byType("Advertorial"), icon: FileText, tone: "from-violet-500 to-fuchsia-400", section: "Advertorial" },
-      { label: "ColeÃ§Ãµes", value: collections.length, icon: Folder, tone: "from-indigo-500 to-violet-400", section: "collections" },
+      { label: "Coleções", value: collections.length, icon: Folder, tone: "from-indigo-500 to-violet-400", section: "collections" },
     ];
   }, [collections.length, swipes]);
 
@@ -485,7 +485,7 @@ export default function Home() {
     const updated = { ...next, updatedAt: new Date().toISOString() };
     setSwipes((current) => current.map((swipe) => (swipe.id === updated.id ? updated : swipe)));
     syncSwipe(updated);
-    showToast("AnÃ¡lise atualizada.");
+    showToast("Análise atualizada.");
   }
 
   function createSwipe(swipe: Swipe) {
@@ -510,11 +510,11 @@ export default function Home() {
   }
 
   function deleteSwipe(id: string) {
-    if (!window.confirm("Excluir este swipe? Esta aÃ§Ã£o nÃ£o pode ser desfeita.")) return;
+    if (!window.confirm("Excluir este swipe? Esta ação não pode ser desfeita.")) return;
     setSwipes((current) => current.filter((swipe) => swipe.id !== id));
     removeRemoteSwipe(id);
-    setSelectedSwipeId(swipes.find((swipe) => swipe.id !== id)?.id ?? null);
-    showToast("Swipe excluÃ­do.");
+    setSelectedSwipeId(null);
+    showToast("Swipe excluído.");
   }
 
   if (!isAuthenticated) {
@@ -534,6 +534,7 @@ export default function Home() {
         activeSection={activeSection}
         onSelect={(section) => {
           setActiveSection(section);
+          setSelectedSwipeId(null);
           setSidebarOpen(false);
         }}
         open={sidebarOpen}
@@ -584,7 +585,10 @@ export default function Home() {
                   }}
                   onFavorite={toggleFavorite}
                   onDelete={deleteSwipe}
-                  onSection={setActiveSection}
+                  onSection={(section) => {
+                    setSelectedSwipeId(null);
+                    setActiveSection(section);
+                  }}
                 />
               )}
 
@@ -632,7 +636,7 @@ export default function Home() {
           setCollections((current) => [collection, ...current]);
           setCollectionOpen(false);
           syncCollection(collection);
-          showToast("ColeÃ§Ã£o criada.");
+          showToast("Coleção criada.");
         }}
       />
       <AnimatePresence>
@@ -917,13 +921,13 @@ function TopBar({
             className={cn("h-8 rounded-md px-3 text-xs", mode === "informacoes" && "bg-white/10 text-white")}
             onClick={() => setMode("informacoes")}
           >
-            InformaÃ§Ãµes
+            Informações
           </button>
           <button
             className={cn("h-8 rounded-md px-3 text-xs", mode === "metricas" && "bg-white/10 text-white")}
             onClick={() => setMode("metricas")}
           >
-            MÃ©tricas
+            Métricas
           </button>
         </div>
         <div className="hidden gap-1 rounded-lg border border-[#1a2d55] bg-[#081327] p-1 sm:flex">
@@ -957,7 +961,7 @@ function TopBar({
           <Plus className="h-4 w-4" />
           <span className="hidden sm:inline">Adicionar Swipe</span>
         </button>
-        <button className="relative hidden h-11 w-11 items-center justify-center rounded-lg border border-[#1a2d55] bg-[#081327] text-slate-300 hover:border-[#8b5cff]/60 hover:text-white md:flex" aria-label="NotificaÃ§Ãµes">
+        <button className="relative hidden h-11 w-11 items-center justify-center rounded-lg border border-[#1a2d55] bg-[#081327] text-slate-300 hover:border-[#8b5cff]/60 hover:text-white md:flex" aria-label="Notificações">
           <Bell className="h-4 w-4" />
           <span className="absolute -right-2 -top-2 rounded-full bg-[#5048ff] px-1.5 py-0.5 text-[10px] font-bold text-white">12</span>
         </button>
@@ -992,14 +996,14 @@ function Dashboard({
         <div className="grid min-h-[288px] gap-6 bg-[radial-gradient(circle_at_70%_20%,rgba(109,59,255,0.28),transparent_35%),radial-gradient(circle_at_45%_90%,rgba(37,99,255,0.22),transparent_40%),linear-gradient(135deg,#030716_0%,#050B1D_45%,#090B2A_100%)] p-6 lg:grid-cols-[0.9fr_1.1fr] lg:p-9">
           <div className="max-w-3xl">
             <h1 className="max-w-2xl text-[30px] font-semibold leading-[1.18] text-white sm:text-[36px]">
-              Centralize seus melhores swipes DTC em um sÃ³ lugar
+              Centralize seus melhores swipes DTC em um só lugar
             </h1>
             <p className="mt-4 max-w-2xl text-sm font-normal leading-7 text-slate-300 sm:text-[15px]">
-              Organize advertorials, quizzes, pÃ¡ginas de venda, criativos, bibliotecas de anÃºncios e funis completos com anÃ¡lise estratÃ©gica.
+              Organize advertorials, quizzes, páginas de venda, criativos, bibliotecas de anúncios e funis completos com análise estratégica.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <button onClick={onAdd} className="h-11 rounded-lg bg-gradient-to-r from-[#2563ff] to-[#6d3bff] px-4 text-sm font-semibold shadow-[0_0_36px_rgba(109,59,255,0.28)]">
-                ComeÃ§ar agora
+                Começar agora
               </button>
               <button onClick={onFunnel} className="h-11 rounded-lg border border-[#1a2d55] bg-[#081327]/70 px-4 text-sm text-slate-200 hover:border-[#8b5cff]/50 hover:bg-[#0b1730]">
                 Organizar nichos
@@ -1033,7 +1037,7 @@ function Dashboard({
       </div>
       <DashboardFilterToolbar />
       <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
-        <Panel title="Adicionados recentemente" action="Ver pÃ¡ginas" onAction={() => onSection("Pagina de Venda")}>
+        <Panel title="Adicionados recentemente" action="Ver páginas" onAction={() => onSection("Pagina de Venda")}>
           {recent.length > 0 ? (
             <SwipeGrid swipes={recent} onSelect={onSelectSwipe} onFavorite={onFavorite} onDelete={onDelete} compact />
           ) : (
@@ -1044,7 +1048,7 @@ function Dashboard({
           <Panel title="Nichos principais">
             <TopNichesList swipes={swipes} />
           </Panel>
-          <Panel title="ColeÃ§Ãµes por Nicho" action="Ver coleÃ§Ãµes" onAction={() => onSection("collections")}>
+          <Panel title="Coleções por Nicho" action="Ver coleções" onAction={() => onSection("collections")}>
             <CollectionNicheSummary swipes={swipes} />
           </Panel>
         </div>
@@ -1059,7 +1063,7 @@ function DashboardFilterToolbar() {
     ["Tipo", ChevronDown],
     ["Categoria", ChevronDown],
     ["GEO", ChevronDown],
-    ["Fonte de TrÃ¡fego", ChevronDown],
+    ["Fonte de Tráfego", ChevronDown],
     ["Status", ChevronDown],
     ["Data adicionada", Calendar],
     ["Filtros", SlidersHorizontal],
@@ -1111,7 +1115,7 @@ function TopNichesList({ swipes }: { swipes: Swipe[] }) {
     return (
       <div className="rounded-lg border border-dashed border-[#1a2d55] bg-[#050b1d]/60 px-4 py-6 text-center">
         <p className="text-sm font-medium text-white">Nenhum nicho ainda.</p>
-        <p className="mt-1 text-xs leading-5 text-slate-500">Os nichos aparecem quando vocÃª salvar pÃ¡ginas, quizzes, criativos ou advertorials.</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">Os nichos aparecem quando você salvar páginas, quizzes, criativos ou advertorials.</p>
       </div>
     );
   }
@@ -1132,7 +1136,7 @@ function CollectionNicheSummary({ swipes }: { swipes: Swipe[] }) {
   const uniqueNiches = new Set(swipes.map((swipe) => swipe.niche).filter(Boolean)).size;
   return (
     <div className="rounded-lg border border-[#1a2d55] bg-[#0b1730] p-4">
-      <p className="text-xs text-slate-400">Use coleÃ§Ãµes para separar sua biblioteca por nichos.</p>
+      <p className="text-xs text-slate-400">Use coleções para separar sua biblioteca por nichos.</p>
       <p className="mt-3 text-3xl font-semibold text-white">{uniqueNiches}</p>
       <p className="mt-1 text-xs font-medium text-slate-500">{uniqueNiches === 1 ? "nicho mapeado" : "nichos mapeados"}</p>
     </div>
@@ -1199,30 +1203,47 @@ function LibraryView({
 }
 
 function FilterBar({ filters, setFilters }: { filters: Filters; setFilters: (filters: Filters) => void }) {
+  const [open, setOpen] = useState(false);
   const update = (key: keyof Filters, value: string | boolean) => setFilters({ ...filters, [key]: value });
   return (
     <div className="rounded-xl border border-white/10 bg-[#111827] p-3">
-      <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="flex items-center gap-2 text-sm font-medium text-white"
+      >
         <Filter className="h-4 w-4 text-blue-300" />
-        Filtros avanÃ§ados
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        <Select value={filters.type} onChange={(value) => update("type", value)} options={["", ...visibleSwipeTypes]} placeholder="Tipo de swipe" />
-        <Select value={filters.niche} onChange={(value) => update("niche", value)} options={["", ...niches]} placeholder="Nicho" />
-        <Select value={filters.geo} onChange={(value) => update("geo", value)} options={["", ...geos]} placeholder="GEO" />
-        <Select value={filters.language} onChange={(value) => update("language", value)} options={["", ...languages]} placeholder="Idioma" />
-        <Select
-          value={filters.trafficSource}
-          onChange={(value) => update("trafficSource", value)}
-          options={["", ...trafficSources]}
-          placeholder="Fonte"
-        />
-        <Select value={filters.status} onChange={(value) => update("status", value)} options={["", ...statuses]} placeholder="Status" />
-        <Select value={filters.rating} onChange={(value) => update("rating", value)} options={["", "1", "2", "3", "4", "5"]} placeholder="Nota mÃ­nima" />
-        <Toggle checked={filters.favorites} onChange={(value) => update("favorites", value)} label="Favoritos" />
-        <Toggle checked={filters.hasScreenshot} onChange={(value) => update("hasScreenshot", value)} label="Tem screenshot" />
-        <Toggle checked={filters.hasAnalysis} onChange={(value) => update("hasAnalysis", value)} label="Tem anÃ¡lise" />
-      </div>
+        Filtros avançados
+        <ChevronDown className={cn("h-4 w-4 text-slate-500 transition", open && "rotate-180")} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              <Select value={filters.type} onChange={(value) => update("type", value)} options={["", ...visibleSwipeTypes]} placeholder="Tipo de swipe" />
+              <Select value={filters.niche} onChange={(value) => update("niche", value)} options={["", ...niches]} placeholder="Nicho" />
+              <Select value={filters.geo} onChange={(value) => update("geo", value)} options={["", ...geos]} placeholder="GEO" />
+              <Select value={filters.language} onChange={(value) => update("language", value)} options={["", ...languages]} placeholder="Idioma" />
+              <Select
+                value={filters.trafficSource}
+                onChange={(value) => update("trafficSource", value)}
+                options={["", ...trafficSources]}
+                placeholder="Fonte"
+              />
+              <Select value={filters.status} onChange={(value) => update("status", value)} options={["", ...statuses]} placeholder="Status" />
+              <Select value={filters.rating} onChange={(value) => update("rating", value)} options={["", "1", "2", "3", "4", "5"]} placeholder="Nota mínima" />
+              <Toggle checked={filters.favorites} onChange={(value) => update("favorites", value)} label="Favoritos" />
+              <Toggle checked={filters.hasScreenshot} onChange={(value) => update("hasScreenshot", value)} label="Tem screenshot" />
+              <Toggle checked={filters.hasAnalysis} onChange={(value) => update("hasAnalysis", value)} label="Tem análise" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1315,7 +1336,7 @@ function SwipeCard({
       </button>
       <div className="flex items-center justify-between border-t border-[#1a2d55]/80 bg-[#0b1730]/72 px-3 py-2">
         <div className="flex gap-1">
-          <IconButton label="Ver anÃ¡lise" icon={Eye} onClick={onSelect} />
+          <IconButton label="Ver análise" icon={Eye} onClick={onSelect} />
           <IconButton label="Editar" icon={PenLine} onClick={onSelect} />
           <IconButton label="Copiar URL" icon={Copy} onClick={() => void copySwipeUrl(swipe.url)} />
           <a className="rounded-md p-2 text-slate-400 hover:bg-white/10 hover:text-white" href={swipe.url} target="_blank" rel="noreferrer" title="Abrir link">
@@ -1363,7 +1384,7 @@ function SwipeDetail({
     });
   }, [mode, swipe]);
 
-  const relatedSteps = ["AnÃºncio", "Advertorial", "Quiz", "PÃ¡gina de vendas", "Checkout", "Upsell"];
+  const relatedSteps = ["Anúncio", "Advertorial", "Quiz", "Página de vendas", "Checkout", "Upsell"];
   return (
     <section className="overflow-hidden rounded-xl border border-white/10 bg-[#111827]">
       <div className="grid gap-0 lg:grid-cols-[420px_1fr]">
@@ -1395,10 +1416,10 @@ function SwipeDetail({
             </div>
             <div className="flex flex-wrap gap-2">
               <a className="rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/[0.06]" href={draft.url} target="_blank" rel="noreferrer">
-                Abrir PÃ¡gina
+                Abrir Página
               </a>
               <button onClick={() => onSave(draft)} className="rounded-lg bg-blue-500 px-3 py-2 text-xs font-semibold">
-                Salvar alteraÃ§Ãµes
+                Salvar alterações
               </button>
               <button onClick={() => onDelete(draft.id)} className="rounded-lg border border-rose-400/20 px-3 py-2 text-xs text-rose-200">
                 Excluir
@@ -1409,9 +1430,9 @@ function SwipeDetail({
         <div className="min-w-0">
           <div className="flex gap-1 overflow-x-auto border-b border-white/10 p-3">
             {[
-              ["resumo", "InformaÃ§Ãµes"],
-              ["copy", "AnÃ¡lise de Copy"],
-              ["metricas", "MÃ©tricas"],
+              ["resumo", "Informações"],
+              ["copy", "Análise de Copy"],
+              ["metricas", "Métricas"],
               ["funil", "Funil"],
             ].map(([id, label]) => (
               <button
@@ -1429,10 +1450,10 @@ function SwipeDetail({
                 <Field label="Nome da oferta" value={draft.title} onChange={(value) => setDraft({ ...draft, title: value })} />
                 <Field label="Produto" value={draft.product} onChange={(value) => setDraft({ ...draft, product: value })} />
                 <Field label="Marca/anunciante" value={draft.brand} onChange={(value) => setDraft({ ...draft, brand: value })} />
-                <Field label="PreÃ§o" value={draft.price} onChange={(value) => setDraft({ ...draft, price: value })} />
+                <Field label="Preço" value={draft.price} onChange={(value) => setDraft({ ...draft, price: value })} />
                 <Field label="Subnicho" value={draft.subniche} onChange={(value) => setDraft({ ...draft, subniche: value })} />
                 <Field label="Plataforma" value={draft.platform} onChange={(value) => setDraft({ ...draft, platform: value })} />
-                <TextArea label="ObservaÃ§Ãµes pessoais" value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} />
+                <TextArea label="Observações pessoais" value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} />
                 <TextArea label="Tags" value={draft.tags.join(", ")} onChange={(value) => setDraft({ ...draft, tags: splitTags(value) })} />
               </div>
             )}
@@ -1471,21 +1492,21 @@ function CopyAnalysisForm({ draft, setDraft }: { draft: Swipe; setDraft: (swipe:
     ["hook", "Hook"],
     ["bigIdea", "Big Idea"],
     ["promise", "Promessa"],
-    ["uniqueMechanism", "Mecanismo Ãºnico"],
+    ["uniqueMechanism", "Mecanismo único"],
     ["problemMechanism", "Mecanismo do problema"],
-    ["solutionMechanism", "Mecanismo da soluÃ§Ã£o"],
+    ["solutionMechanism", "Mecanismo da solução"],
     ["proof", "Prova"],
-    ["story", "HistÃ³ria"],
+    ["story", "História"],
     ["authority", "Autoridade"],
-    ["objections", "ObjeÃ§Ãµes"],
+    ["objections", "Objeções"],
     ["offer", "Oferta"],
     ["guarantee", "Garantia"],
     ["cta", "CTA"],
     ["scarcity", "Escassez"],
-    ["urgency", "UrgÃªncia"],
-    ["trustElements", "Elementos de confianÃ§a"],
-    ["conversionElements", "Elementos de conversÃ£o"],
-    ["notes", "ObservaÃ§Ãµes do usuÃ¡rio"],
+    ["urgency", "Urgência"],
+    ["trustElements", "Elementos de confiança"],
+    ["conversionElements", "Elementos de conversão"],
+    ["notes", "Observações do usuário"],
   ];
   return (
     <div className="space-y-5">
@@ -1495,7 +1516,7 @@ function CopyAnalysisForm({ draft, setDraft }: { draft: Swipe; setDraft: (swipe:
         ))}
       </div>
       <div>
-        <p className="mb-3 text-sm font-medium text-white">Elementos presentes na pÃ¡gina</p>
+        <p className="mb-3 text-sm font-medium text-white">Elementos presentes na página</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {featureLabels.map(([key, label]) => (
             <Toggle key={key} checked={draft.features[key]} onChange={(value) => updateFeature(key, value)} label={label} />
@@ -1515,19 +1536,19 @@ function MetricsForm({ draft, setDraft }: { draft: Swipe; setDraft: (swipe: Swip
     ["cpm", "CPM"],
     ["cpa", "CPA"],
     ["roas", "ROAS"],
-    ["conversionRate", "ConversÃ£o da pÃ¡gina"],
+    ["conversionRate", "Conversão da página"],
     ["epc", "EPC"],
     ["aov", "AOV"],
     ["estimatedRevenue", "Receita estimada"],
     ["estimatedSpend", "Spend estimado"],
-    ["source", "Fonte da mÃ©trica"],
+    ["source", "Fonte da métrica"],
   ];
   return (
     <div className="grid gap-4 xl:grid-cols-3">
       {fields.map(([key, label]) => (
         <Field key={key} label={label} value={draft.metrics[key]} onChange={(value) => update(key, value)} />
       ))}
-      <TextArea label="ObservaÃ§Ãµes" value={draft.metrics.notes} onChange={(value) => update("notes", value)} />
+      <TextArea label="Observações" value={draft.metrics.notes} onChange={(value) => update("notes", value)} />
     </div>
   );
 }
@@ -1562,7 +1583,7 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
   function capturePreview() {
     const url = safeUrl(form.url);
     if (!url) {
-      setPreview({ error: "URL invÃ¡lida. Use http:// ou https://." });
+      setPreview({ error: "URL inválida. Use http:// ou https://." });
       return;
     }
     startTransition(async () => {
@@ -1581,7 +1602,7 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
           screenshotUrl: data.screenshotUrl || data.image || current.screenshotUrl,
         }));
       } catch {
-        setPreview({ error: "NÃ£o foi possÃ­vel capturar automaticamente. VocÃª pode salvar mesmo assim e adicionar um screenshot manualmente." });
+        setPreview({ error: "Não foi possível capturar automaticamente. Você pode salvar mesmo assim e adicionar um screenshot manualmente." });
       }
     });
   }
@@ -1589,7 +1610,7 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
   function submit() {
     const url = safeUrl(form.url);
     if (!url) {
-      setPreview({ error: "URL invÃ¡lida. Use http:// ou https://." });
+      setPreview({ error: "URL inválida. Use http:// ou https://." });
       return;
     }
     const now = new Date().toISOString();
@@ -1649,23 +1670,23 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
           <Field label="Subnicho" value={form.subniche} onChange={(value) => setForm({ ...form, subniche: value })} />
           <SelectField label="GEO" value={form.geo} onChange={(value) => setForm({ ...form, geo: value })} options={geos} />
           <SelectField label="Idioma" value={form.language} onChange={(value) => setForm({ ...form, language: value })} options={languages} />
-          <SelectField label="Fonte de trÃ¡fego" value={form.trafficSource} onChange={(value) => setForm({ ...form, trafficSource: value })} options={trafficSources} />
-          <SelectField label="Plataforma de anÃºncio" value={form.platform} onChange={(value) => setForm({ ...form, platform: value })} options={platforms} />
-          <Field label="Link da biblioteca de anÃºncios" value={form.adLibraryUrl} onChange={(value) => setForm({ ...form, adLibraryUrl: value })} />
+          <SelectField label="Fonte de tráfego" value={form.trafficSource} onChange={(value) => setForm({ ...form, trafficSource: value })} options={trafficSources} />
+          <SelectField label="Plataforma de anúncio" value={form.platform} onChange={(value) => setForm({ ...form, platform: value })} options={platforms} />
+          <Field label="Link da biblioteca de anúncios" value={form.adLibraryUrl} onChange={(value) => setForm({ ...form, adLibraryUrl: value })} />
           <Field label="Link do criativo" value={form.creativeUrl} onChange={(value) => setForm({ ...form, creativeUrl: value })} />
           <Field label="Upload manual / URL do screenshot" value={form.screenshotUrl} onChange={(value) => setForm({ ...form, screenshotUrl: value })} />
           <Field label="Tags" value={form.tags} onChange={(value) => setForm({ ...form, tags: value })} placeholder="vsl, prova social, br" />
           <SelectField label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value as SwipeStatus })} options={statuses} />
           <SelectField label="Nota" value={String(form.rating)} onChange={(value) => setForm({ ...form, rating: Number(value) })} options={["1", "2", "3", "4", "5"]} />
           <div className="sm:col-span-2">
-            <TextArea label="ObservaÃ§Ãµes" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
+            <TextArea label="Observações" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
           </div>
           <Toggle checked={form.isFavorite} onChange={(value) => setForm({ ...form, isFavorite: value })} label="Favorito" />
         </div>
         <div className="space-y-4">
           <ScreenshotPreview preview={preview} screenshotUrl={form.screenshotUrl} />
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs leading-5 text-slate-400">
-            A captura respeita pÃ¡ginas pÃºblicas. Se houver bloqueio do site, use a imagem Open Graph ou envie um screenshot manual.
+            A captura respeita páginas públicas. Se houver bloqueio do site, use a imagem Open Graph ou envie um screenshot manual.
           </div>
         </div>
       </div>
@@ -1779,10 +1800,10 @@ function CollectionModal({
   const [selected, setSelected] = useState<string[]>([]);
   if (!open) return null;
   return (
-    <Modal title="Criar ColeÃ§Ã£o" onClose={onClose}>
+    <Modal title="Criar Coleção" onClose={onClose}>
       <div className="space-y-4">
         <Field label="Nome" value={name} onChange={setName} placeholder="Diabetes, Skincare, Emagrecimento..." />
-        <TextArea label="DescriÃ§Ã£o" value={description} onChange={setDescription} />
+        <TextArea label="Descrição" value={description} onChange={setDescription} />
         <div className="grid max-h-64 gap-2 overflow-y-auto">
           {swipes.map((swipe) => (
             <Toggle
@@ -1797,7 +1818,7 @@ function CollectionModal({
           onClick={() =>
             onSave({
               id: createRecordId("collection"),
-              name: name || "Nova coleÃ§Ã£o",
+              name: name || "Nova coleção",
               description,
               coverUrl: swipes.find((swipe) => selected.includes(swipe.id))?.screenshotUrl || swipes[0]?.screenshotUrl || "",
               tags: [],
@@ -1807,7 +1828,7 @@ function CollectionModal({
           }
           className="h-10 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 px-4 text-sm font-semibold"
         >
-          Criar ColeÃ§Ã£o
+          Criar Coleção
         </button>
       </div>
     </Modal>
@@ -1974,7 +1995,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
     <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-[#111827] p-8 text-center">
       <Boxes className="mb-4 h-10 w-10 text-slate-500" />
       <h3 className="text-lg font-semibold text-white">Nenhum swipe encontrado.</h3>
-      <p className="mt-2 max-w-md text-sm text-slate-400">Comece adicionando seu primeiro link de referÃªncia.</p>
+      <p className="mt-2 max-w-md text-sm text-slate-400">Comece adicionando seu primeiro link de referência.</p>
       <button onClick={onAdd} className="mt-5 h-10 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 px-4 text-sm font-semibold">
         Adicionar Swipe
       </button>
