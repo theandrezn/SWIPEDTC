@@ -145,13 +145,16 @@ create table if not exists public.ad_libraries (
 
 create table if not exists public.ad_library_snapshots (
   id uuid primary key default gen_random_uuid(),
-  ad_library_id uuid not null references public.ad_libraries(id) on delete cascade,
+  ad_library_id uuid references public.ad_libraries(id) on delete cascade,
+  swipe_id uuid references public.swipes(id) on delete cascade,
   user_id uuid not null references public.users(id) on delete cascade,
   snapshot_date date not null default current_date,
   ad_count integer not null default 0 check (ad_count >= 0),
   source text not null default 'manual',
   created_at timestamptz not null default now(),
-  unique(ad_library_id, snapshot_date)
+  unique(ad_library_id, snapshot_date),
+  unique(swipe_id, snapshot_date),
+  check (ad_library_id is not null or swipe_id is not null)
 );
 
 create table if not exists public.collection_swipes (
@@ -220,6 +223,22 @@ alter table public.ad_libraries add column if not exists scrape_enabled boolean 
 alter table public.ad_libraries add column if not exists last_scraped_at timestamptz;
 alter table public.ad_libraries add column if not exists scrape_status text not null default 'manual';
 alter table public.ad_libraries add column if not exists scrape_error text;
+alter table public.ad_library_snapshots alter column ad_library_id drop not null;
+alter table public.ad_library_snapshots add column if not exists swipe_id uuid references public.swipes(id) on delete cascade;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'ad_library_snapshots_swipe_id_snapshot_date_key'
+  ) then
+    alter table public.ad_library_snapshots add constraint ad_library_snapshots_swipe_id_snapshot_date_key unique (swipe_id, snapshot_date);
+  end if;
+  if not exists (
+    select 1 from pg_constraint where conname = 'ad_library_snapshots_has_owner_link'
+  ) then
+    alter table public.ad_library_snapshots add constraint ad_library_snapshots_has_owner_link check (ad_library_id is not null or swipe_id is not null);
+  end if;
+end $$;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -356,11 +375,19 @@ create policy "users own ad library snapshots" on public.ad_library_snapshots
   using ((select auth.uid()) = user_id)
   with check (
     (select auth.uid()) = user_id
-    and exists (
-      select 1
-      from public.ad_libraries l
-      where l.id = ad_library_id
-        and l.user_id = (select auth.uid())
+    and (
+      exists (
+        select 1
+        from public.ad_libraries l
+        where l.id = ad_library_id
+          and l.user_id = (select auth.uid())
+      )
+      or exists (
+        select 1
+        from public.swipes s
+        where s.id = swipe_id
+          and s.user_id = (select auth.uid())
+      )
     )
   );
 
@@ -438,6 +465,7 @@ create index if not exists ad_libraries_user_updated_idx on public.ad_libraries(
 create index if not exists ad_libraries_meta_sync_idx on public.ad_libraries(platform, scrape_enabled, status);
 create index if not exists ad_library_snapshots_user_date_idx on public.ad_library_snapshots(user_id, snapshot_date);
 create index if not exists ad_library_snapshots_library_date_idx on public.ad_library_snapshots(ad_library_id, snapshot_date);
+create index if not exists ad_library_snapshots_swipe_date_idx on public.ad_library_snapshots(swipe_id, snapshot_date);
 create index if not exists collection_swipes_swipe_id_idx on public.collection_swipes(swipe_id);
 create index if not exists funnels_user_id_idx on public.funnels(user_id);
 create index if not exists funnel_steps_order_idx on public.funnel_steps(funnel_id, step_order);

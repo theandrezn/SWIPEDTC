@@ -98,6 +98,7 @@ export type Swipe = {
   ogDescription: string;
   ogImage: string;
   adLibraryUrl: string;
+  adLibrary: SwipeAdLibrary;
   creativeUrl: string;
   notes: string;
   tags: string[];
@@ -107,6 +108,24 @@ export type Swipe = {
   analysis: SwipeAnalysis;
   features: SwipeFeatures;
   metrics: Metrics;
+};
+
+export type SwipeAdLibrarySnapshot = {
+  id: string;
+  snapshotDate: string;
+  adCount: number;
+  source: string;
+  createdAt: string;
+};
+
+export type SwipeAdLibrary = {
+  currentAdCount: number;
+  metaPageId: string;
+  scrapeEnabled: boolean;
+  lastScrapedAt: string;
+  scrapeStatus: string;
+  scrapeError: string;
+  snapshots: SwipeAdLibrarySnapshot[];
 };
 
 export type Collection = {

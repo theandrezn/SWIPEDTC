@@ -59,7 +59,7 @@ import {
   trafficSources,
 } from "@/lib/mock-data";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import type { AdLibrary, Collection, Funnel, Swipe, SwipeStatus, SwipeType, ViewMode } from "@/lib/types";
+import type { Collection, Funnel, Swipe, SwipeStatus, SwipeType, ViewMode } from "@/lib/types";
 import { cn, formatDate, safeUrl, uid } from "@/lib/utils";
 
 const navItems = [
@@ -68,7 +68,6 @@ const navItems = [
   { id: "Quiz", label: "Quizzes", icon: Gauge },
   { id: "Pagina de Venda", label: "Páginas de Venda", icon: BookOpen },
   { id: "Criativo", label: "Criativos", icon: ImagePlus },
-  { id: "ad-libraries", label: "Bibliotecas de Anúncios", icon: Link2 },
   { id: "collections", label: "Coleções por Nicho", icon: Folder },
 ];
 
@@ -166,28 +165,10 @@ type CollectionRow = {
   created_at: string;
 };
 
-type AdLibraryRow = {
-  id: string;
-  platform: string;
-  advertiser_name: string;
-  library_url: string;
-  niche: string | null;
-  geo: string | null;
-  status: string;
-  current_ad_count: number;
-  meta_page_id: string | null;
-  scrape_enabled: boolean | null;
-  last_scraped_at: string | null;
-  scrape_status: string | null;
-  scrape_error: string | null;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
 type AdLibrarySnapshotRow = {
   id: string;
   ad_library_id: string;
+  swipe_id: string | null;
   snapshot_date: string;
   ad_count: number;
   source: string;
@@ -198,8 +179,21 @@ function createRecordId(prefix: string) {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : uid(prefix);
 }
 
-function swipeFromRow(row: SwipeRow): Swipe {
+function emptySwipeAdLibrary() {
+  return {
+    currentAdCount: 0,
+    metaPageId: "",
+    scrapeEnabled: true,
+    lastScrapedAt: "",
+    scrapeStatus: "manual",
+    scrapeError: "",
+    snapshots: [],
+  };
+}
+
+function swipeFromRow(row: SwipeRow, adSnapshots: AdLibrarySnapshotRow[] = []): Swipe {
   const payload = row.payload ?? {};
+  const payloadAdLibrary = payload.adLibrary ?? {};
   return {
     id: row.id,
     title: row.title,
@@ -222,6 +216,19 @@ function swipeFromRow(row: SwipeRow): Swipe {
     ogDescription: row.og_description ?? "",
     ogImage: row.og_image ?? "",
     adLibraryUrl: row.ad_library_url ?? "",
+    adLibrary: {
+      ...emptySwipeAdLibrary(),
+      ...payloadAdLibrary,
+      snapshots: adSnapshots
+        .filter((snapshot) => snapshot.swipe_id === row.id)
+        .map((snapshot) => ({
+          id: snapshot.id,
+          snapshotDate: snapshot.snapshot_date,
+          adCount: snapshot.ad_count,
+          source: snapshot.source,
+          createdAt: snapshot.created_at,
+        })),
+    },
     creativeUrl: row.creative_url ?? "",
     notes: row.notes ?? "",
     tags: Array.isArray(payload.tags) ? payload.tags : [],
@@ -291,59 +298,6 @@ function collectionToRow(collection: Collection, userId: string) {
   };
 }
 
-function adLibraryFromRows(row: AdLibraryRow, snapshots: AdLibrarySnapshotRow[]): AdLibrary {
-  return {
-    id: row.id,
-    platform: row.platform,
-    advertiserName: row.advertiser_name,
-    libraryUrl: row.library_url,
-    niche: row.niche ?? "",
-    geo: row.geo ?? "",
-    status: row.status,
-    currentAdCount: row.current_ad_count,
-    metaPageId: row.meta_page_id ?? "",
-    scrapeEnabled: row.scrape_enabled ?? true,
-    lastScrapedAt: row.last_scraped_at ?? "",
-    scrapeStatus: row.scrape_status ?? "manual",
-    scrapeError: row.scrape_error ?? "",
-    notes: row.notes ?? "",
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    snapshots: snapshots
-      .filter((snapshot) => snapshot.ad_library_id === row.id)
-      .map((snapshot) => ({
-        id: snapshot.id,
-        adLibraryId: snapshot.ad_library_id,
-        snapshotDate: snapshot.snapshot_date,
-        adCount: snapshot.ad_count,
-        source: snapshot.source,
-        createdAt: snapshot.created_at,
-      })),
-  };
-}
-
-function adLibraryToRow(library: AdLibrary, userId: string) {
-  return {
-    id: library.id,
-    user_id: userId,
-    platform: library.platform,
-    advertiser_name: library.advertiserName,
-    library_url: library.libraryUrl,
-    niche: library.niche || null,
-    geo: library.geo || null,
-    status: library.status,
-    current_ad_count: library.currentAdCount,
-    meta_page_id: library.metaPageId || null,
-    scrape_enabled: library.scrapeEnabled,
-    last_scraped_at: library.lastScrapedAt || null,
-    scrape_status: library.scrapeStatus || null,
-    scrape_error: library.scrapeError || null,
-    notes: library.notes || null,
-    created_at: library.createdAt,
-    updated_at: library.updatedAt,
-  };
-}
-
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -355,7 +309,6 @@ export default function Home() {
   const [swipes, setSwipes] = useState<Swipe[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [funnels, setFunnels] = useState<Funnel[]>([]);
-  const [adLibraries, setAdLibraries] = useState<AdLibrary[]>([]);
   const [selectedSwipeId, setSelectedSwipeId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [collectionOpen, setCollectionOpen] = useState(false);
@@ -377,26 +330,23 @@ export default function Home() {
     if (!supabase) return;
     await ensureUserProfile(user);
 
-    const [swipeResult, collectionResult, adLibraryResult, adSnapshotResult] = await Promise.all([
+    const [swipeResult, collectionResult, adSnapshotResult] = await Promise.all([
       supabase.from("swipes").select("*").order("created_at", { ascending: false }),
       supabase.from("collections").select("*").order("created_at", { ascending: false }),
-      supabase.from("ad_libraries").select("*").order("updated_at", { ascending: false }),
       supabase.from("ad_library_snapshots").select("*").order("snapshot_date", { ascending: true }),
     ]);
 
-    if (swipeResult.error || collectionResult.error || adLibraryResult.error || adSnapshotResult.error) {
-      console.error("Supabase sync error", swipeResult.error ?? collectionResult.error ?? adLibraryResult.error ?? adSnapshotResult.error);
+    if (swipeResult.error || collectionResult.error || adSnapshotResult.error) {
+      console.error("Supabase sync error", swipeResult.error ?? collectionResult.error ?? adSnapshotResult.error);
       showToast("Não foi possível carregar seus dados do Supabase.");
       return;
     }
 
-    const remoteSwipes = ((swipeResult.data ?? []) as SwipeRow[]).map(swipeFromRow);
     const remoteCollections = ((collectionResult.data ?? []) as CollectionRow[]).map(collectionFromRow);
     const remoteSnapshots = (adSnapshotResult.data ?? []) as AdLibrarySnapshotRow[];
-    const remoteAdLibraries = ((adLibraryResult.data ?? []) as AdLibraryRow[]).map((library) => adLibraryFromRows(library, remoteSnapshots));
+    const remoteSwipes = ((swipeResult.data ?? []) as SwipeRow[]).map((swipe) => swipeFromRow(swipe, remoteSnapshots));
     setSwipes(remoteSwipes);
     setCollections(remoteCollections);
-    setAdLibraries(remoteAdLibraries);
     setFunnels([]);
     setSelectedSwipeId(null);
   }
@@ -441,37 +391,24 @@ export default function Home() {
       });
   }
 
-  function syncAdLibrary(library: AdLibrary) {
-    if (!supabase || !currentUserId) return;
-    void supabase
-      .from("ad_libraries")
-      .upsert(adLibraryToRow(library, currentUserId))
-      .then(({ error }) => {
-        if (error) {
-          console.error("Ad library sync error", error);
-          showToast("Não foi possível sincronizar a biblioteca.");
-        }
-      });
-  }
-
-  function syncAdLibrarySnapshot(libraryId: string, adCount: number, source = "manual") {
+  function syncSwipeAdLibrarySnapshot(swipe: Swipe, adCount: number, source = "manual") {
     if (!supabase || !currentUserId) return;
     const snapshotDate = new Date().toISOString().slice(0, 10);
     void supabase
       .from("ad_library_snapshots")
       .upsert(
         {
-          ad_library_id: libraryId,
+          swipe_id: swipe.id,
           user_id: currentUserId,
           snapshot_date: snapshotDate,
           ad_count: adCount,
           source,
         },
-        { onConflict: "ad_library_id,snapshot_date" },
+        { onConflict: "swipe_id,snapshot_date" },
       )
       .then(({ error }) => {
         if (error) {
-          console.error("Ad library snapshot sync error", error);
+          console.error("Swipe ad library snapshot sync error", error);
           showToast("Não foi possível salvar o ponto do gráfico.");
         }
       });
@@ -490,11 +427,10 @@ export default function Home() {
         window.localStorage.setItem("dtc-swipe-hub-state-version", storageVersion);
       }
       if (saved) {
-        const parsed = JSON.parse(saved) as { swipes: Swipe[]; collections: Collection[]; funnels: Funnel[]; adLibraries?: AdLibrary[] };
-        setSwipes(parsed.swipes);
+        const parsed = JSON.parse(saved) as { swipes: Swipe[]; collections: Collection[]; funnels: Funnel[] };
+        setSwipes(parsed.swipes.map((swipe) => ({ ...swipe, adLibrary: { ...emptySwipeAdLibrary(), ...(swipe.adLibrary ?? {}) } })));
         setCollections(parsed.collections);
         setFunnels(parsed.funnels);
-        setAdLibraries(parsed.adLibraries ?? []);
         setSelectedSwipeId(null);
       }
       setIsAuthenticated(auth === "true");
@@ -514,7 +450,6 @@ export default function Home() {
         setIsAuthenticated(false);
         setSwipes([]);
         setCollections([]);
-        setAdLibraries([]);
         setFunnels([]);
         setSelectedSwipeId(null);
         return;
@@ -545,8 +480,8 @@ export default function Home() {
 
   useEffect(() => {
     window.localStorage.setItem("dtc-swipe-hub-state-version", storageVersion);
-    window.localStorage.setItem("dtc-swipe-hub-state", JSON.stringify({ swipes, collections, funnels, adLibraries }));
-  }, [swipes, collections, funnels, adLibraries]);
+    window.localStorage.setItem("dtc-swipe-hub-state", JSON.stringify({ swipes, collections, funnels }));
+  }, [swipes, collections, funnels]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -623,6 +558,8 @@ export default function Home() {
     const updated = { ...next, updatedAt: new Date().toISOString() };
     setSwipes((current) => current.map((swipe) => (swipe.id === updated.id ? updated : swipe)));
     syncSwipe(updated);
+    const latest = updated.adLibrary.snapshots.at(-1);
+    if (latest) syncSwipeAdLibrarySnapshot(updated, latest.adCount, latest.source);
     showToast("Análise atualizada.");
   }
 
@@ -685,7 +622,6 @@ export default function Home() {
           setCurrentUser(null);
           setSwipes([]);
           setCollections([]);
-          setAdLibraries([]);
           setFunnels([]);
           setSelectedSwipeId(null);
           setIsAuthenticated(false);
@@ -752,21 +688,6 @@ export default function Home() {
 
               {activeSection === "collections" && (
                 <CollectionsView collections={collections} swipes={swipes} onCreate={() => setCollectionOpen(true)} />
-              )}
-
-              {activeSection === "ad-libraries" && (
-                <AdLibrariesView
-                  libraries={adLibraries}
-                  onSave={(library) => {
-                    setAdLibraries((current) => {
-                      const exists = current.some((item) => item.id === library.id);
-                      return exists ? current.map((item) => (item.id === library.id ? library : item)) : [library, ...current];
-                    });
-                    syncAdLibrary(library);
-                    syncAdLibrarySnapshot(library.id, library.currentAdCount, library.snapshots.at(-1)?.source ?? "manual");
-                    showToast("Biblioteca de anúncios salva.");
-                  }}
-                />
               )}
 
               {selectedSwipe && visibleLibrarySections.includes(activeSection) && (
@@ -1668,15 +1589,18 @@ function SwipeDetail({
           </div>
           <div className="p-4">
             {tab === "resumo" && (
-              <div className="grid gap-4 xl:grid-cols-2">
-                <Field label="Nome da oferta" value={draft.title} onChange={(value) => setDraft({ ...draft, title: value })} />
-                <Field label="Produto" value={draft.product} onChange={(value) => setDraft({ ...draft, product: value })} />
-                <Field label="Marca/anunciante" value={draft.brand} onChange={(value) => setDraft({ ...draft, brand: value })} />
-                <Field label="Preço" value={draft.price} onChange={(value) => setDraft({ ...draft, price: value })} />
-                <Field label="Subnicho" value={draft.subniche} onChange={(value) => setDraft({ ...draft, subniche: value })} />
-                <Field label="Plataforma" value={draft.platform} onChange={(value) => setDraft({ ...draft, platform: value })} />
-                <TextArea label="Observações pessoais" value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} />
-                <TextArea label="Tags" value={draft.tags.join(", ")} onChange={(value) => setDraft({ ...draft, tags: splitTags(value) })} />
+              <div className="space-y-5">
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <Field label="Nome da oferta" value={draft.title} onChange={(value) => setDraft({ ...draft, title: value })} />
+                  <Field label="Produto" value={draft.product} onChange={(value) => setDraft({ ...draft, product: value })} />
+                  <Field label="Marca/anunciante" value={draft.brand} onChange={(value) => setDraft({ ...draft, brand: value })} />
+                  <Field label="Preço" value={draft.price} onChange={(value) => setDraft({ ...draft, price: value })} />
+                  <Field label="Subnicho" value={draft.subniche} onChange={(value) => setDraft({ ...draft, subniche: value })} />
+                  <Field label="Plataforma" value={draft.platform} onChange={(value) => setDraft({ ...draft, platform: value })} />
+                  <TextArea label="Observações pessoais" value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} />
+                  <TextArea label="Tags" value={draft.tags.join(", ")} onChange={(value) => setDraft({ ...draft, tags: splitTags(value) })} />
+                </div>
+                <ProductAdLibraryPanel draft={draft} setDraft={setDraft} />
               </div>
             )}
             {tab === "copy" && <CopyAnalysisForm draft={draft} setDraft={setDraft} />}
@@ -1699,6 +1623,172 @@ function SwipeDetail({
         </div>
       </div>
     </section>
+  );
+}
+
+function ProductAdLibraryPanel({ draft, setDraft }: { draft: Swipe; setDraft: (swipe: Swipe) => void }) {
+  const [syncing, setSyncing] = useState(false);
+  const snapshots = draft.adLibrary.snapshots;
+  const total = draft.adLibrary.currentAdCount;
+  const chartData = snapshots.length
+    ? snapshots.map((snapshot) => ({ date: snapshot.snapshotDate, ads: snapshot.adCount }))
+    : [{ date: new Date().toISOString().slice(0, 10), ads: total }];
+
+  async function syncMetaNow() {
+    const url = safeUrl(draft.adLibraryUrl);
+    if (!url || !url.includes("facebook.com/ads/library")) {
+      setDraft({
+        ...draft,
+        adLibrary: {
+          ...draft.adLibrary,
+          scrapeStatus: "unsupported",
+          scrapeError: "Cole um link público da Meta Ads Library para ativar o gráfico automático.",
+        },
+      });
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const response = await fetch("/api/meta-ad-count", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        adCount?: number | null;
+        status?: string;
+        source?: string;
+        pageId?: string;
+        error?: string;
+      };
+      const now = new Date().toISOString();
+
+      if (!response.ok || result.adCount == null) {
+        setDraft({
+          ...draft,
+          adLibrary: {
+            ...draft.adLibrary,
+            lastScrapedAt: now,
+            metaPageId: result.pageId ?? draft.adLibrary.metaPageId,
+            scrapeStatus: result.status ?? "error",
+            scrapeError: result.error ?? "Não foi possível capturar a contagem da Meta.",
+          },
+        });
+        return;
+      }
+
+      setDraft({
+        ...draft,
+        adLibrary: {
+          ...draft.adLibrary,
+          currentAdCount: result.adCount,
+          metaPageId: result.pageId ?? draft.adLibrary.metaPageId,
+          lastScrapedAt: now,
+          scrapeStatus: "success",
+          scrapeError: "",
+          snapshots: [
+            ...draft.adLibrary.snapshots.filter((snapshot) => snapshot.snapshotDate !== now.slice(0, 10)),
+            {
+              id: createRecordId("ad-library-snapshot"),
+              snapshotDate: now.slice(0, 10),
+              adCount: result.adCount,
+              source: result.source ?? "meta_browser",
+              createdAt: now,
+            },
+          ],
+        },
+      });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-[#1a2d55] bg-[#081327] p-4">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase text-cyan-200">Biblioteca de anúncios do produto</p>
+          <h3 className="mt-1 text-lg font-semibold text-white">Evolução diária de anúncios</h3>
+          <p className="mt-1 text-sm text-slate-400">O gráfico usa o link da Meta Ads Library cadastrado neste produto.</p>
+        </div>
+        <button
+          onClick={syncMetaNow}
+          disabled={syncing}
+          className="h-10 rounded-lg border border-[#22d3ee]/30 bg-[#22d3ee]/10 px-4 text-xs font-semibold text-cyan-100 hover:bg-[#22d3ee]/20 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {syncing ? "Sincronizando..." : "Sincronizar Meta agora"}
+        </button>
+      </div>
+      <Field
+        label="Link da Meta Ads Library"
+        value={draft.adLibraryUrl}
+        onChange={(value) => setDraft({ ...draft, adLibraryUrl: value })}
+        placeholder="https://www.facebook.com/ads/library/..."
+      />
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <MetricTile label="Anúncios atuais" value={total} />
+        <MetricTile label="Pontos no gráfico" value={snapshots.length} />
+        <MetricTile label="Auto sync" value={draft.adLibrary.scrapeEnabled ? 1 : 0} />
+      </div>
+      <div className="mt-4 h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData}>
+            <defs>
+              <linearGradient id={`productAdGradient-${draft.id}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#22D3EE" stopOpacity={0.55} />
+                <stop offset="95%" stopColor="#2563FF" stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="#1A2D55" strokeDasharray="3 3" />
+            <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+            <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} allowDecimals={false} />
+            <Tooltip contentStyle={{ background: "#081327", border: "1px solid #1A2D55", borderRadius: 8, color: "#fff" }} />
+            <Area type="monotone" dataKey="ads" stroke="#22D3EE" strokeWidth={2} fill={`url(#productAdGradient-${draft.id})`} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium">
+        {draft.adLibrary.lastScrapedAt && (
+          <span className="rounded-full border border-[#1a2d55] bg-[#050b1d] px-2 py-1 text-slate-400">
+            Último scraping: {formatDate(draft.adLibrary.lastScrapedAt)}
+          </span>
+        )}
+        <span className="rounded-full border border-[#1a2d55] bg-[#050b1d] px-2 py-1 text-slate-400">
+          Status: {draft.adLibrary.scrapeStatus || "manual"}
+        </span>
+      </div>
+      {draft.adLibrary.scrapeError && <p className="mt-3 text-xs leading-5 text-amber-200">{draft.adLibrary.scrapeError}</p>}
+    </div>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-[#1a2d55] bg-[#0b1730] p-3">
+      <p className="text-xs text-slate-400">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-white">{value.toLocaleString("pt-BR")}</p>
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="w-full max-w-5xl rounded-xl border border-white/10 bg-[#111827] p-5 shadow-2xl"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-white">{title}</h2>
+          <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {children}
+      </motion.div>
+    </div>
   );
 }
 
@@ -1864,6 +1954,10 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
       createdAt: now,
       updatedAt: now,
       lastSeenAt: now,
+      adLibrary: {
+        ...emptySwipeAdLibrary(),
+        scrapeEnabled: Boolean(form.adLibraryUrl.includes("facebook.com/ads/library")),
+      },
       analysis: emptyAnalysis,
       features: emptyFeatures,
       metrics: emptyMetrics,
@@ -2057,307 +2151,6 @@ function CollectionModal({
   );
 }
 
-function AdLibrariesView({
-  libraries,
-  onSave,
-}: {
-  libraries: AdLibrary[];
-  onSave: (library: AdLibrary) => void;
-}) {
-  const [form, setForm] = useState({
-    platform: "Meta Ads Library",
-    advertiserName: "",
-    libraryUrl: "",
-    niche: "Skincare",
-    geo: "BR",
-    status: "Ativo",
-    currentAdCount: "0",
-    notes: "",
-  });
-  const totalAds = libraries.reduce((sum, library) => sum + library.currentAdCount, 0);
-  const latestSnapshots = libraries.flatMap((library) =>
-    library.snapshots.map((snapshot) => ({
-      date: snapshot.snapshotDate,
-      ads: snapshot.adCount,
-      name: library.advertiserName,
-    })),
-  );
-  const chartData = latestSnapshots.length > 0
-    ? Object.values(
-        latestSnapshots.reduce<Record<string, { date: string; ads: number }>>((acc, point) => {
-          acc[point.date] = { date: point.date, ads: (acc[point.date]?.ads ?? 0) + point.ads };
-          return acc;
-        }, {}),
-      )
-    : [{ date: new Date().toISOString().slice(0, 10), ads: totalAds }];
-
-  function submit() {
-    const url = safeUrl(form.libraryUrl);
-    if (!url) return;
-    const now = new Date().toISOString();
-    const id = createRecordId("ad-library");
-    const adCount = Math.max(0, Number(form.currentAdCount) || 0);
-    onSave({
-      id,
-      platform: form.platform,
-      advertiserName: form.advertiserName || getDomain(url),
-      libraryUrl: url,
-      niche: form.niche,
-      geo: form.geo,
-      status: form.status,
-      currentAdCount: adCount,
-      metaPageId: "",
-      scrapeEnabled: form.platform === "Meta Ads Library",
-      lastScrapedAt: "",
-      scrapeStatus: "manual",
-      scrapeError: "",
-      notes: form.notes,
-      createdAt: now,
-      updatedAt: now,
-      snapshots: [
-        {
-          id: createRecordId("ad-library-snapshot"),
-          adLibraryId: id,
-          snapshotDate: now.slice(0, 10),
-          adCount,
-          source: "manual",
-          createdAt: now,
-        },
-      ],
-    });
-    setForm({ ...form, advertiserName: "", libraryUrl: "", currentAdCount: "0", notes: "" });
-  }
-
-  return (
-    <section className="space-y-4">
-      <PageHeading
-        title="Bibliotecas de Anúncios"
-        description="Cadastre links de bibliotecas e acompanhe diariamente a quantidade de anúncios ativos."
-      />
-      <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
-        <Panel title="Nova biblioteca">
-          <div className="space-y-3">
-            <SelectField label="Plataforma" value={form.platform} onChange={(value) => setForm({ ...form, platform: value })} options={platforms} />
-            <Field label="Nome do anunciante" value={form.advertiserName} onChange={(value) => setForm({ ...form, advertiserName: value })} placeholder="Marca ou advertiser" />
-            <Field label="Link da biblioteca" value={form.libraryUrl} onChange={(value) => setForm({ ...form, libraryUrl: value })} placeholder="https://..." />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <SelectField label="Nicho" value={form.niche} onChange={(value) => setForm({ ...form, niche: value })} options={niches} />
-              <SelectField label="GEO" value={form.geo} onChange={(value) => setForm({ ...form, geo: value })} options={geos} />
-            </div>
-            <Field label="Anúncios ativos hoje" value={form.currentAdCount} onChange={(value) => setForm({ ...form, currentAdCount: value.replace(/\D/g, "") })} placeholder="0" />
-            <TextArea label="Observações" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
-            <div className="rounded-lg border border-[#1a2d55] bg-[#050b1d] p-3 text-xs leading-5 text-slate-400">
-              Bibliotecas da Meta são sincronizadas automaticamente uma vez por dia. O botão no card também tenta capturar a contagem na hora.
-            </div>
-            <button onClick={submit} className="h-10 w-full rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 px-4 text-sm font-semibold">
-              Salvar biblioteca
-            </button>
-          </div>
-        </Panel>
-        <div className="space-y-4">
-          <Panel title="Evolução diária de anúncios">
-            <div className="mb-4 grid gap-3 sm:grid-cols-3">
-              <MetricTile label="Bibliotecas" value={libraries.length} />
-              <MetricTile label="Anúncios ativos" value={totalAds} />
-              <MetricTile label="Snapshots" value={latestSnapshots.length} />
-            </div>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="adCountGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8B5CFF" stopOpacity={0.55} />
-                      <stop offset="95%" stopColor="#2563FF" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="#1A2D55" strokeDasharray="3 3" />
-                  <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ background: "#081327", border: "1px solid #1A2D55", borderRadius: 8, color: "#fff" }} />
-                  <Area type="monotone" dataKey="ads" stroke="#8B5CFF" strokeWidth={2} fill="url(#adCountGradient)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </Panel>
-          <div className="grid gap-3">
-            {libraries.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[#1a2d55] bg-[#081327] p-8 text-center">
-                <Link2 className="mx-auto mb-3 h-8 w-8 text-slate-500" />
-                <h3 className="text-lg font-semibold text-white">Nenhuma biblioteca cadastrada.</h3>
-                <p className="mt-2 text-sm text-slate-400">Adicione o primeiro link para começar o histórico diário.</p>
-              </div>
-            ) : (
-              libraries.map((library) => <AdLibraryCard key={library.id} library={library} onSave={onSave} />)
-            )}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function MetricTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border border-[#1a2d55] bg-[#0b1730] p-3">
-      <p className="text-xs text-slate-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-white">{value.toLocaleString("pt-BR")}</p>
-    </div>
-  );
-}
-
-function AdLibraryCard({ library, onSave }: { library: AdLibrary; onSave: (library: AdLibrary) => void }) {
-  const [count, setCount] = useState(String(library.currentAdCount));
-  const [syncing, setSyncing] = useState(false);
-  const latest = library.snapshots.at(-1);
-  const isMeta = library.platform === "Meta Ads Library" || library.libraryUrl.includes("facebook.com/ads/library");
-
-  async function syncMetaNow() {
-    setSyncing(true);
-    try {
-      const response = await fetch("/api/meta-ad-count", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: library.libraryUrl }),
-      });
-      const result = (await response.json().catch(() => ({}))) as {
-        adCount?: number | null;
-        status?: string;
-        source?: string;
-        pageId?: string;
-        error?: string;
-      };
-      const now = new Date().toISOString();
-
-      if (!response.ok || result.adCount == null) {
-        onSave({
-          ...library,
-          metaPageId: result.pageId ?? library.metaPageId,
-          lastScrapedAt: now,
-          scrapeStatus: result.status ?? "error",
-          scrapeError: result.error ?? "Não foi possível capturar a contagem da Meta.",
-          updatedAt: now,
-        });
-        return;
-      }
-
-      setCount(String(result.adCount));
-      onSave({
-        ...library,
-        currentAdCount: result.adCount,
-        metaPageId: result.pageId ?? library.metaPageId,
-        lastScrapedAt: now,
-        scrapeStatus: "success",
-        scrapeError: "",
-        updatedAt: now,
-        snapshots: [
-          ...library.snapshots.filter((snapshot) => snapshot.snapshotDate !== now.slice(0, 10)),
-          {
-            id: createRecordId("ad-library-snapshot"),
-            adLibraryId: library.id,
-            snapshotDate: now.slice(0, 10),
-            adCount: result.adCount,
-            source: result.source ?? "meta_html_total",
-            createdAt: now,
-          },
-        ],
-      });
-    } finally {
-      setSyncing(false);
-    }
-  }
-
-  return (
-    <div className="rounded-xl border border-[#1a2d55] bg-[#081327] p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <CategoryBadge label={library.platform} />
-            <StatusBadge status={library.status as SwipeStatus} />
-          </div>
-          <h3 className="mt-3 truncate text-lg font-semibold text-white">{library.advertiserName}</h3>
-          <p className="mt-1 text-sm text-slate-400">{library.niche} · {library.geo}</p>
-          <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-medium">
-            <span className="rounded-full border border-[#1a2d55] bg-[#050b1d] px-2 py-1 text-slate-400">
-              Auto sync: {library.scrapeEnabled ? "ativo" : "pausado"}
-            </span>
-            {library.lastScrapedAt && (
-              <span className="rounded-full border border-[#1a2d55] bg-[#050b1d] px-2 py-1 text-slate-400">
-                Último scraping: {formatDate(library.lastScrapedAt)}
-              </span>
-            )}
-          </div>
-          <a href={library.libraryUrl} target="_blank" rel="noreferrer" className="mt-2 block truncate text-xs text-blue-300 hover:text-blue-200">
-            {library.libraryUrl}
-          </a>
-          {library.scrapeError && <p className="mt-2 text-xs leading-5 text-amber-200">{library.scrapeError}</p>}
-        </div>
-        <div className="w-full sm:w-44">
-          <Field label="Anúncios ativos" value={count} onChange={(value) => setCount(value.replace(/\D/g, ""))} />
-          <button
-            onClick={() => {
-              const now = new Date().toISOString();
-              const adCount = Math.max(0, Number(count) || 0);
-              onSave({
-                ...library,
-                currentAdCount: adCount,
-                scrapeStatus: "manual",
-                scrapeError: "",
-                updatedAt: now,
-                snapshots: [
-                  ...library.snapshots.filter((snapshot) => snapshot.snapshotDate !== now.slice(0, 10)),
-                  {
-                    id: createRecordId("ad-library-snapshot"),
-                    adLibraryId: library.id,
-                    snapshotDate: now.slice(0, 10),
-                    adCount,
-                    source: "manual",
-                    createdAt: now,
-                  },
-                ],
-              });
-            }}
-            className="mt-2 h-9 w-full rounded-lg border border-[#8b5cff]/40 bg-[#8b5cff]/12 text-xs font-semibold text-violet-100 hover:bg-[#8b5cff]/20"
-          >
-            Atualizar contagem
-          </button>
-          {isMeta && (
-            <button
-              onClick={syncMetaNow}
-              disabled={syncing}
-              className="mt-2 h-9 w-full rounded-lg border border-[#22d3ee]/30 bg-[#22d3ee]/10 text-xs font-semibold text-cyan-100 hover:bg-[#22d3ee]/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {syncing ? "Sincronizando..." : "Sincronizar Meta agora"}
-            </button>
-          )}
-        </div>
-      </div>
-      <p className="mt-3 text-xs text-slate-500">
-        Último ponto: {latest ? `${latest.adCount.toLocaleString("pt-BR")} anúncios em ${formatDate(latest.snapshotDate)}` : "sem snapshot ainda"}
-      </p>
-    </div>
-  );
-}
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.98, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-5xl rounded-xl border border-white/10 bg-[#111827] p-5 shadow-2xl"
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
-          <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        {children}
-      </motion.div>
-    </div>
-  );
-}
-
 function KanbanView({ swipes, onSelect }: { swipes: Swipe[]; onSelect: (id: string) => void }) {
   return (
     <div className="grid gap-4 lg:grid-cols-4">
@@ -2420,7 +2213,7 @@ function MiniSwipeRow({ swipe, onClick }: { swipe: Swipe; onClick: () => void })
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-white">{swipe.title}</p>
-        <p className="text-xs text-slate-500">{swipe.niche} Â· {swipe.geo}</p>
+        <p className="text-xs text-slate-500">{swipe.niche} · {swipe.geo}</p>
       </div>
     </button>
   );
@@ -2679,4 +2472,5 @@ function getDomain(value: string) {
     return value.replace(/^https?:\/\//, "").split("/")[0] || "dominio salvo";
   }
 }
+
 
