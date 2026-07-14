@@ -1,6 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import puppeteer from "@cloudflare/puppeteer";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
+import { createClient } from "@supabase/supabase-js";
 
 type CloudflarePage = Awaited<ReturnType<Awaited<ReturnType<typeof puppeteer.launch>>["newPage"]>>;
 
@@ -95,12 +96,13 @@ async function scrapeWithCloudflareBrowser(url: string, browserBinding: BrowserW
     await waitForCloudflareResultsText(page, 20000);
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2)).catch(() => undefined);
     await delay(2000);
-    await page.screenshot({ type: "jpeg", quality: 70, fullPage: false }).catch(() => undefined);
+    const screenshot = await page.screenshot({ type: "jpeg", quality: 70, fullPage: false }).catch(() => null);
+    const screenshotUrl = screenshot ? await saveRemoteMetaScreenshot(screenshot).catch(() => "") : "";
     const [html, text] = await Promise.all([
       page.content(),
       page.evaluate(() => document.body?.innerText ?? "").catch(() => ""),
     ]);
-    return resultFromDocument(url, html, text, "");
+    return resultFromDocument(url, html, text, screenshotUrl, page.url());
   } catch (error) {
     return errorResult(url, error, "Falha ao abrir a Meta Ads Library com browser.");
   } finally {
@@ -124,7 +126,7 @@ async function scrapeWithLocalPlaywright(url: string): Promise<MetaAdCountResult
     await page.waitForTimeout(2000);
     const screenshotUrl = await saveLocalMetaScreenshot(page).catch(() => "");
     const [html, text] = await Promise.all([page.content(), page.locator("body").innerText({ timeout: 5000 }).catch(() => "")]);
-    return resultFromDocument(url, html, text, screenshotUrl);
+    return resultFromDocument(url, html, text, screenshotUrl, page.url());
   } catch (error) {
     return errorResult(url, error, "Falha ao abrir a Meta Ads Library com browser.");
   } finally {
@@ -155,6 +157,25 @@ async function saveLocalMetaScreenshot(page: import("playwright").Page) {
   return `/captures/${fileName}`;
 }
 
+async function saveRemoteMetaScreenshot(screenshot: Uint8Array) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) return "";
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const filePath = `meta-ads/${Date.now()}.jpg`;
+  const { error } = await supabase.storage.from("swipe-screenshots").upload(filePath, screenshot, {
+    contentType: "image/jpeg",
+    cacheControl: "86400",
+    upsert: true,
+  });
+  if (error) return "";
+
+  return `${supabaseUrl}/storage/v1/object/public/swipe-screenshots/${filePath}`;
+}
+
 async function waitForCloudflareResultsText(page: CloudflarePage, timeoutMs: number) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -168,7 +189,19 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function resultFromDocument(url: string, html: string, visibleText: string, screenshotUrl = ""): MetaAdCountResult {
+function resultFromDocument(url: string, html: string, visibleText: string, screenshotUrl = "", finalUrl = url): MetaAdCountResult {
+  const pageProblem = detectMetaPageProblem(url, finalUrl, visibleText, html);
+  if (pageProblem) {
+    return {
+      adCount: null,
+      status: pageProblem.status,
+      source: "none",
+      pageId: extractMetaPageId(url),
+      screenshotUrl,
+      error: pageProblem.error,
+    };
+  }
+
   const visibleCount = extractCountFromText(visibleText);
   const htmlCount = visibleCount ?? extractCountFromMetaHtml(html);
   const loadedAdsCount = htmlCount ?? countLoadedAds(html);
@@ -183,6 +216,61 @@ function resultFromDocument(url: string, html: string, visibleText: string, scre
         ? "A Meta nao expos a contagem para o browser. Verifique se o link abre publicamente sem login."
         : "",
   };
+}
+
+function detectMetaPageProblem(requestUrl: string, finalUrl: string, visibleText: string, html: string) {
+  const normalizedText = visibleText.replace(/\s+/g, " ").trim().toLowerCase();
+  const normalizedHtml = html.replace(/\s+/g, " ").toLowerCase();
+  const requestedPageId = extractMetaPageId(requestUrl);
+  const finalPageId = extractMetaPageId(finalUrl);
+
+  const redirectedToLibraryHome =
+    requestedPageId &&
+    requestedPageId !== finalPageId &&
+    /\/ads\/library\/?$/.test(safePathname(finalUrl)) &&
+    !/[?&](?:view_all_page_id|page_id)=/.test(finalUrl);
+
+  const libraryHomeMarkers = [
+    "search by keyword or advertiser name",
+    "pesquise por palavra-chave ou nome do anunciante",
+    "find ads across meta technologies",
+    "encontre anúncios nas tecnologias da meta",
+  ];
+
+  const blockingMarkers = [
+    "please log in",
+    "faça login",
+    "entre no facebook",
+    "we limit how often",
+    "unusual activity",
+    "temporarily blocked",
+    "tente novamente mais tarde",
+    "something went wrong",
+  ];
+
+  if (redirectedToLibraryHome || libraryHomeMarkers.some((marker) => normalizedText.includes(marker) || normalizedHtml.includes(marker))) {
+    return {
+      status: "error" as const,
+      error: "A Meta redirecionou para a home da Ads Library e nao expos a biblioteca publica desse anunciante.",
+    };
+  }
+
+  if (blockingMarkers.some((marker) => normalizedText.includes(marker) || normalizedHtml.includes(marker))) {
+    return {
+      status: "error" as const,
+      error: "A Meta bloqueou ou limitou a visualizacao publica da Ads Library para este link.",
+    };
+  }
+
+  return null;
+}
+
+function safePathname(value: string) {
+  try {
+    return new URL(value).pathname;
+  } catch {
+    return "";
+  }
 }
 
 function extractCountFromMetaHtml(html: string) {
