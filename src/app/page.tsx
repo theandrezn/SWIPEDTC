@@ -301,6 +301,7 @@ function collectionToRow(collection: Collection, userId: string) {
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthHydrated, setIsAuthHydrated] = useState(!isSupabaseConfigured);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("dashboard");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -435,6 +436,7 @@ export default function Home() {
         setSelectedSwipeId(null);
       }
       setIsAuthenticated(auth === "true");
+      setIsAuthHydrated(true);
     }
 
     if (!supabase) {
@@ -453,6 +455,7 @@ export default function Home() {
         setCollections([]);
         setFunnels([]);
         setSelectedSwipeId(null);
+        setIsAuthHydrated(true);
         return;
       }
 
@@ -460,12 +463,18 @@ export default function Home() {
       setCurrentUser(user);
       window.localStorage.setItem("dtc-swipe-hub-auth", "true");
       await loadRemoteState(user);
-      if (isMounted) setIsAuthenticated(true);
+      if (isMounted) {
+        setIsAuthenticated(true);
+        setIsAuthHydrated(true);
+      }
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      void hydrateRemoteUser(data.session?.user ?? null);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => hydrateRemoteUser(data.session?.user ?? null))
+      .catch(() => {
+        if (isMounted) setIsAuthHydrated(true);
+      });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       void hydrateRemoteUser(session?.user ?? null);
@@ -591,6 +600,17 @@ export default function Home() {
     removeRemoteSwipe(id);
     setSelectedSwipeId(null);
     showToast("Swipe excluído.");
+  }
+
+  if (!isAuthHydrated) {
+    return (
+      <main className="app-gradient flex min-h-screen items-center justify-center p-6">
+        <div className="flex items-center gap-3 rounded-lg border border-[#1a2d55] bg-[#081327] px-5 py-4 text-sm text-slate-200 shadow-[0_0_40px_rgba(37,99,255,0.12)]">
+          <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
+          Restaurando sua sessão...
+        </div>
+      </main>
+    );
   }
 
   if (!isAuthenticated) {

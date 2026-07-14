@@ -13,6 +13,7 @@
   "dependencies": {
     "@cloudflare/puppeteer": "^1.1.0",
     "@opennextjs/cloudflare": "^1.19.11",
+    "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.106.2",
     "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
