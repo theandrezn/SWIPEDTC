@@ -768,30 +768,6 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 
     setAuthLoading(true);
     try {
-      if (authMode === "signup") {
-        const signupResponse = await fetch("/api/signup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        const signupData = (await signupResponse.json().catch(() => ({}))) as { error?: string };
-
-        if (!signupResponse.ok && signupResponse.status !== 503) {
-          setAuthMessage(authErrorMessage(signupData.error ?? "Não foi possível criar a conta."));
-          return;
-        }
-
-        if (signupResponse.ok) {
-          const loginResult = await supabase.auth.signInWithPassword({ email, password });
-          if (loginResult.error) {
-            setAuthMessage(authErrorMessage(loginResult.error.message));
-            return;
-          }
-          onLogin();
-          return;
-        }
-      }
-
       const result =
         authMode === "signup"
           ? await supabase.auth.signUp({ email, password })
