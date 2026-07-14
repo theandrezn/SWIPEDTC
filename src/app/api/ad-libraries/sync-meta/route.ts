@@ -11,7 +11,7 @@ type SwipeRow = {
   payload: Record<string, unknown> | null;
 };
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rbsrgfaqmpoidudpsqyd.supabase.co";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://yugkirleuiqreddxbzis.supabase.co";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 export async function POST(request: Request) {

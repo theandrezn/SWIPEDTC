@@ -7,7 +7,7 @@ const signupSchema = z.object({
   password: z.string().min(6),
 });
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://rbsrgfaqmpoidudpsqyd.supabase.co";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://yugkirleuiqreddxbzis.supabase.co";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 async function createUserViaEdgeFunction(email: string, password: string) {

@@ -58,7 +58,7 @@ O Worker tem um `scheduled()` handler em `worker.ts` e um Cron Trigger em `wrang
 Depois do deploy, a Cloudflare executa `/api/ad-libraries/sync-meta` a cada 6 horas, mesmo com o PC desligado e sem Codex aberto. Para funcionar em produção, configure no Worker:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=https://rbsrgfaqmpoidudpsqyd.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://yugkirleuiqreddxbzis.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 META_AD_SYNC_TOKEN=
@@ -84,7 +84,7 @@ Ela valida a URL, busca metadata Open Graph/HTML e tenta capturar screenshot rea
 4. Configure as variáveis no `.env.local` para desenvolvimento e também nas variáveis de ambiente do Cloudflare:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=https://rbsrgfaqmpoidudpsqyd.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://yugkirleuiqreddxbzis.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 META_AD_SYNC_TOKEN=
