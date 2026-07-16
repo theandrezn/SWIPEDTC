@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import type { FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
+import * as tus from "tus-js-client";
 import {
   Area,
   AreaChart,
@@ -58,7 +59,7 @@ import {
   niches,
   trafficSources,
 } from "@/lib/mock-data";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { configuredSupabaseUrl, isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { Collection, Funnel, Swipe, SwipeStatus, SwipeType, ViewMode } from "@/lib/types";
 import { cn, formatDate, safeUrl, uid } from "@/lib/utils";
 
@@ -231,6 +232,8 @@ function swipeFromRow(row: SwipeRow, adSnapshots: AdLibrarySnapshotRow[] = []): 
         })),
     },
     creativeUrl: row.creative_url ?? "",
+    creativeMediaType: payload.creativeMediaType,
+    creativeFileName: payload.creativeFileName,
     notes: row.notes ?? "",
     tags: Array.isArray(payload.tags) ? payload.tags : [],
     createdAt: payload.createdAt ?? row.created_at,
@@ -1654,24 +1657,30 @@ function ProductAdLibraryPanel({
     }
 
     setSyncing(true);
+    let timeout: number | undefined;
     try {
       const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 70000);
+      timeout = window.setTimeout(() => controller.abort(), 70000);
       const response = await fetch("/api/meta-ad-count", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
         signal: controller.signal,
       });
-      window.clearTimeout(timeout);
-      const result = (await response.json().catch(() => ({}))) as {
+      const responseText = await response.text();
+      let result: {
         adCount?: number | null;
         status?: string;
         source?: string;
         pageId?: string;
         screenshotUrl?: string;
         error?: string;
-      };
+      } = {};
+      try {
+        result = JSON.parse(responseText || "{}") as typeof result;
+      } catch {
+        result.error = responseText ? `A Meta retornou um erro ${response.status}: ${responseText.slice(0, 160)}` : "A Meta retornou uma resposta inválida.";
+      }
       const now = new Date().toISOString();
 
       if (!response.ok || result.adCount == null) {
@@ -1684,7 +1693,9 @@ function ProductAdLibraryPanel({
             scrapeEnabled: true,
             scrapeStatus: result.status ?? "error",
             lastScreenshotUrl: result.screenshotUrl || draft.adLibrary.lastScreenshotUrl,
-            scrapeError: result.error ?? "Não foi possível capturar a contagem da Meta.",
+            scrapeError:
+              result.error ??
+              (responseText ? `A Meta retornou um erro ${response.status}: ${responseText.slice(0, 160)}` : `A Meta retornou erro ${response.status}.`),
           },
         };
         setDraft(next);
@@ -1732,6 +1743,7 @@ function ProductAdLibraryPanel({
       setDraft(next);
       onSave(next);
     } finally {
+      if (timeout !== undefined) window.clearTimeout(timeout);
       setSyncing(false);
     }
   }
@@ -1909,6 +1921,74 @@ function MetricsForm({ draft, setDraft }: { draft: Swipe; setDraft: (swipe: Swip
   );
 }
 
+const maxCreativeAssetBytes = 50 * 1024 * 1024;
+const maxStandardUploadBytes = 6 * 1024 * 1024;
+
+function getCreativeMediaType(file: File) {
+  if (["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) return "image" as const;
+  if (file.type === "video/mp4") return "video" as const;
+  return null;
+}
+
+function getCreativeMediaTypeFromUrl(value: string) {
+  return /\.mp4(?:$|[?#])/i.test(value) ? ("video" as const) : ("image" as const);
+}
+
+async function uploadCreativeAsset(file: File, onProgress: (progress: number) => void) {
+  const mediaType = getCreativeMediaType(file);
+  if (!mediaType) throw new Error("Envie uma imagem PNG, JPG, WEBP, GIF ou um vídeo MP4.");
+  if (file.size > maxCreativeAssetBytes) throw new Error("O arquivo ultrapassa o limite de 50 MB.");
+  if (!supabase) throw new Error("O Supabase Storage não está configurado.");
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const session = sessionData.session;
+  if (!session) throw new Error("Entre novamente para enviar o arquivo.");
+
+  const extension = file.name.split(".").pop()?.replace(/[^a-z0-9]/gi, "").toLowerCase() || (mediaType === "video" ? "mp4" : "jpg");
+  const filePath = `${session.user.id}/creatives/${createRecordId("creative")}.${extension}`;
+
+  if (file.size <= maxStandardUploadBytes) {
+    const { error } = await supabase.storage.from("swipe-screenshots").upload(filePath, file, {
+      contentType: file.type,
+      cacheControl: "3600",
+      upsert: false,
+    });
+    if (error) throw error;
+  } else {
+    const url = new URL(configuredSupabaseUrl);
+    const storageHost = url.hostname.endsWith(".supabase.co") ? url.hostname.replace(".supabase.co", ".storage.supabase.co") : url.hostname;
+    await new Promise<void>((resolve, reject) => {
+      const upload = new tus.Upload(file, {
+        endpoint: `${url.protocol}//${storageHost}/storage/v1/upload/resumable`,
+        retryDelays: [0, 3000, 5000, 10000],
+        headers: {
+          authorization: `Bearer ${session.access_token}`,
+          "x-upsert": "false",
+        },
+        uploadDataDuringCreation: true,
+        removeFingerprintOnSuccess: true,
+        chunkSize: maxStandardUploadBytes,
+        metadata: {
+          bucketName: "swipe-screenshots",
+          objectName: filePath,
+          contentType: file.type,
+          cacheControl: "3600",
+        },
+        onError: (error) => reject(error),
+        onProgress: (uploaded, total) => onProgress(Math.round((uploaded / total) * 100)),
+        onSuccess: () => resolve(),
+      });
+      void upload.findPreviousUploads().then((previousUploads) => {
+        if (previousUploads[0]) upload.resumeFromPreviousUpload(previousUploads[0]);
+        upload.start();
+      }, reject);
+    });
+  }
+
+  const { data } = supabase.storage.from("swipe-screenshots").getPublicUrl(filePath);
+  return { url: data.publicUrl, mediaType, fileName: file.name };
+}
+
 function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (swipe: Swipe) => void }) {
   const [form, setForm] = useState({
     url: "",
@@ -1924,6 +2004,8 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
     platform: "Meta Ads Library",
     adLibraryUrl: "",
     creativeUrl: "",
+    creativeMediaType: "" as "" | "image" | "video",
+    creativeFileName: "",
     screenshotUrl: "",
     tags: "",
     notes: "",
@@ -1933,6 +2015,9 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
   });
   const [preview, setPreview] = useState<{ title?: string; description?: string; image?: string; screenshotUrl?: string; screenshotError?: string; error?: string } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [assetUploading, setAssetUploading] = useState(false);
+  const [assetProgress, setAssetProgress] = useState(0);
+  const [assetError, setAssetError] = useState("");
 
   if (!open) return null;
 
@@ -1963,16 +2048,46 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
     });
   }
 
+  async function handleCreativeAsset(file: File | null) {
+    if (!file) return;
+    setAssetError("");
+    setAssetProgress(0);
+    setAssetUploading(true);
+    try {
+      const asset = await uploadCreativeAsset(file, setAssetProgress);
+      setForm((current) => ({
+        ...current,
+        creativeUrl: asset.url,
+        creativeMediaType: asset.mediaType,
+        creativeFileName: asset.fileName,
+        screenshotUrl: asset.mediaType === "image" ? asset.url : "",
+        title: current.title || file.name.replace(/\.[^.]+$/, ""),
+      }));
+      setAssetProgress(100);
+    } catch (error) {
+      setAssetError(error instanceof Error ? error.message : "Não foi possível enviar o criativo.");
+    } finally {
+      setAssetUploading(false);
+    }
+  }
+
   function submit() {
-    const url = safeUrl(form.url);
-    if (!url) {
+    const isCreative = form.type === "Criativo";
+    const destinationUrl = safeUrl(form.url);
+    const creativeUrl = safeUrl(form.creativeUrl);
+    if (!isCreative && !destinationUrl) {
       setPreview({ error: "URL inválida. Use http:// ou https://." });
       return;
     }
+    if (isCreative && !creativeUrl) {
+      setAssetError("Envie um arquivo ou informe a URL pública do criativo antes de salvar.");
+      return;
+    }
+    const url = destinationUrl || creativeUrl || "";
     const now = new Date().toISOString();
     onSave({
       id: createRecordId("swipe"),
-      title: form.title || preview?.title || "Novo Swipe",
+      title: form.title || form.creativeFileName || preview?.title || "Novo Swipe",
       url,
       type: form.type,
       niche: form.niche,
@@ -1987,12 +2102,14 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
       status: form.status,
       rating: Number(form.rating),
       isFavorite: form.isFavorite,
-      screenshotUrl: form.screenshotUrl || preview?.screenshotUrl || preview?.image || "",
+      screenshotUrl: isCreative ? form.screenshotUrl : form.screenshotUrl || preview?.screenshotUrl || preview?.image || "",
       ogTitle: preview?.title ?? "",
       ogDescription: preview?.description ?? "",
       ogImage: preview?.image ?? "",
       adLibraryUrl: form.adLibraryUrl,
       creativeUrl: form.creativeUrl,
+      creativeMediaType: form.creativeMediaType || (isCreative ? getCreativeMediaTypeFromUrl(form.creativeUrl) : undefined),
+      creativeFileName: form.creativeFileName || undefined,
       notes: form.notes,
       tags: splitTags(form.tags),
       createdAt: now,
@@ -2012,18 +2129,25 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
     <Modal title="Adicionar Novo Swipe" onClose={onClose}>
       <div className="grid max-h-[78vh] gap-5 overflow-y-auto pr-1 lg:grid-cols-[1fr_360px]">
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <Field label="URL principal" value={form.url} onChange={(value) => setForm({ ...form, url: value })} placeholder="https://..." />
-            <button
-              onClick={capturePreview}
-              className="mt-2 flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs text-slate-200 hover:bg-white/[0.06]"
-            >
-              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-              Capturar Screenshot
-            </button>
-          </div>
           <SelectField label="Tipo de swipe" value={form.type} onChange={(value) => setForm({ ...form, type: value as SwipeType })} options={visibleSwipeTypes} />
           <Field label="Nome da oferta" value={form.title} onChange={(value) => setForm({ ...form, title: value })} />
+          {form.type === "Criativo" ? (
+            <div className="sm:col-span-2">
+              <CreativeAssetUpload uploading={assetUploading} progress={assetProgress} error={assetError} fileName={form.creativeFileName} onFile={(file) => void handleCreativeAsset(file)} />
+              <Field label="URL de destino (opcional)" value={form.url} onChange={(value) => setForm({ ...form, url: value })} placeholder="https://pagina-da-oferta.com" />
+            </div>
+          ) : (
+            <div className="sm:col-span-2">
+              <Field label="URL principal" value={form.url} onChange={(value) => setForm({ ...form, url: value })} placeholder="https://..." />
+              <button
+                onClick={capturePreview}
+                className="mt-2 flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs text-slate-200 hover:bg-white/[0.06]"
+              >
+                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                Capturar Screenshot
+              </button>
+            </div>
+          )}
           <Field label="Produto" value={form.product} onChange={(value) => setForm({ ...form, product: value })} />
           <Field label="Marca/anunciante" value={form.brand} onChange={(value) => setForm({ ...form, brand: value })} />
           <SelectField label="Nicho" value={form.niche} onChange={(value) => setForm({ ...form, niche: value })} options={niches} />
@@ -2033,8 +2157,8 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
           <SelectField label="Fonte de tráfego" value={form.trafficSource} onChange={(value) => setForm({ ...form, trafficSource: value })} options={trafficSources} />
           <SelectField label="Plataforma de anúncio" value={form.platform} onChange={(value) => setForm({ ...form, platform: value })} options={platforms} />
           <Field label="Link da biblioteca de anúncios" value={form.adLibraryUrl} onChange={(value) => setForm({ ...form, adLibraryUrl: value })} />
-          <Field label="Link do criativo" value={form.creativeUrl} onChange={(value) => setForm({ ...form, creativeUrl: value })} />
-          <Field label="Upload manual / URL do screenshot" value={form.screenshotUrl} onChange={(value) => setForm({ ...form, screenshotUrl: value })} />
+          <Field label={form.type === "Criativo" ? "URL pública do criativo" : "Link do criativo"} value={form.creativeUrl} onChange={(value) => setForm({ ...form, creativeUrl: value })} />
+          {form.type !== "Criativo" && <Field label="Upload manual / URL do screenshot" value={form.screenshotUrl} onChange={(value) => setForm({ ...form, screenshotUrl: value })} />}
           <Field label="Tags" value={form.tags} onChange={(value) => setForm({ ...form, tags: value })} placeholder="vsl, prova social, br" />
           <SelectField label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value as SwipeStatus })} options={statuses} />
           <SelectField label="Nota" value={String(form.rating)} onChange={(value) => setForm({ ...form, rating: Number(value) })} options={["1", "2", "3", "4", "5"]} />
@@ -2044,9 +2168,13 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
           <Toggle checked={form.isFavorite} onChange={(value) => setForm({ ...form, isFavorite: value })} label="Favorito" />
         </div>
         <div className="space-y-4">
-          <ScreenshotPreview preview={preview} screenshotUrl={form.screenshotUrl} />
+          {form.type === "Criativo" ? (
+            <CreativeAssetPreview url={form.creativeUrl} mediaType={form.creativeMediaType} fileName={form.creativeFileName} />
+          ) : (
+            <ScreenshotPreview preview={preview} screenshotUrl={form.screenshotUrl} />
+          )}
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs leading-5 text-slate-400">
-            A captura respeita páginas públicas. Se houver bloqueio do site, use a imagem Open Graph ou envie um screenshot manual.
+            {form.type === "Criativo" ? "Use o arquivo original do anúncio para manter a referência fiel." : "A captura respeita páginas públicas. Se houver bloqueio do site, use a imagem Open Graph ou envie um screenshot manual."}
           </div>
         </div>
       </div>
@@ -2059,6 +2187,56 @@ function AddSwipeModal({ open, onClose, onSave }: { open: boolean; onClose: () =
         </button>
       </div>
     </Modal>
+  );
+}
+
+function CreativeAssetUpload({
+  uploading,
+  progress,
+  error,
+  fileName,
+  onFile,
+}: {
+  uploading: boolean;
+  progress: number;
+  error: string;
+  fileName: string;
+  onFile: (file: File | null) => void;
+}) {
+  return (
+    <label className="group mb-4 flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#22d3ee]/35 bg-[#081327] px-5 text-center transition hover:border-[#8b5cff]/65 hover:bg-[#0b1730]">
+      <input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4" onChange={(event) => onFile(event.target.files?.[0] ?? null)} />
+      {uploading ? <Loader2 className="mb-3 h-7 w-7 animate-spin text-cyan-200" /> : <Upload className="mb-3 h-7 w-7 text-cyan-200 transition group-hover:text-violet-200" />}
+      <span className="text-sm font-semibold text-white">{uploading ? `Enviando ${progress}%` : fileName || "Enviar imagem ou vídeo"}</span>
+      <span className="mt-1 text-xs text-slate-400">JPG, PNG, WEBP, GIF ou MP4 · até 50 MB</span>
+      {uploading && <span className="mt-3 h-1.5 w-full max-w-64 overflow-hidden rounded-full bg-[#050b1d]"><span className="block h-full rounded-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${progress}%` }} /></span>}
+      {error && <span className="mt-3 text-xs text-amber-200">{error}</span>}
+    </label>
+  );
+}
+
+function CreativeAssetPreview({ url, mediaType, fileName }: { url: string; mediaType: "" | "image" | "video"; fileName: string }) {
+  const isVideo = mediaType === "video" || (!mediaType && /\.mp4(?:$|[?#])/i.test(url));
+  return (
+    <div className="rounded-xl border border-white/10 bg-[#0b0f17] p-4">
+      <p className="mb-3 text-sm font-medium text-white">Arquivo do criativo</p>
+      <div className="aspect-[4/5] overflow-hidden rounded-lg bg-[#111827]">
+        {url ? (
+          isVideo ? (
+            <video src={url} className="h-full w-full object-cover" controls playsInline preload="metadata" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt="" className="h-full w-full object-contain" />
+          )
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-500">
+            <Upload className="h-8 w-8" />
+            <span className="text-center text-xs">O arquivo enviado aparece aqui.</span>
+          </div>
+        )}
+      </div>
+      {fileName && <p className="mt-3 truncate text-xs text-slate-400">{fileName}</p>}
+    </div>
   );
 }
 
@@ -2265,6 +2443,7 @@ function MiniSwipeRow({ swipe, onClick }: { swipe: Swipe; onClick: () => void })
 
 function SwipeMedia({ swipe, className = "" }: { swipe: Swipe; className?: string }) {
   const image = swipe.screenshotUrl || swipe.ogImage;
+  const videoUrl = swipe.type === "Criativo" && (swipe.creativeMediaType === "video" || /\.mp4(?:$|[?#])/i.test(swipe.creativeUrl)) ? swipe.creativeUrl : "";
   return (
     <div
       className={cn("relative h-full w-full overflow-hidden", className)}
@@ -2283,7 +2462,9 @@ function SwipeMedia({ swipe, className = "" }: { swipe: Swipe; className?: strin
         </div>
       </div>
       <div className="absolute bottom-4 left-5 right-5 h-10 rounded-lg border border-[#1a2d55] bg-[#050b1d]/55" />
-      {image && (
+      {videoUrl ? (
+        <video src={videoUrl} className="relative h-full w-full object-cover" muted loop autoPlay playsInline preload="metadata" />
+      ) : image && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={image}

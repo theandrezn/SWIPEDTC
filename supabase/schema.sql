@@ -477,8 +477,8 @@ values (
   'swipe-screenshots',
   'swipe-screenshots',
   true,
-  10485760,
-  array['image/png', 'image/jpeg', 'image/webp', 'image/gif']::text[]
+  52428800,
+  array['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'video/mp4']::text[]
 )
 on conflict (id) do update
 set public = excluded.public,

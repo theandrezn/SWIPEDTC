@@ -13,8 +13,19 @@ export async function POST(request: Request) {
     return Response.json({ error: "Informe uma URL válida da Meta Ads Library." }, { status: 400 });
   }
 
-  const result = await scrapeMetaAdCountWithBrowser(parsed.data.url);
-  const statusCode = result.status === "unsupported" ? 400 : 200;
+  try {
+    const result = await scrapeMetaAdCountWithBrowser(parsed.data.url);
+    const statusCode = result.status === "unsupported" ? 400 : 200;
 
-  return Response.json(result, { status: statusCode });
+    return Response.json(result, { status: statusCode });
+  } catch (error) {
+    return Response.json(
+      {
+        adCount: null,
+        status: "error",
+        error: error instanceof Error ? error.message : "Falha inesperada ao abrir a Meta Ads Library.",
+      },
+      { status: 502 },
+    );
+  }
 }

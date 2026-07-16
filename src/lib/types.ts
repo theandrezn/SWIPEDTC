@@ -100,6 +100,8 @@ export type Swipe = {
   adLibraryUrl: string;
   adLibrary: SwipeAdLibrary;
   creativeUrl: string;
+  creativeMediaType?: "image" | "video";
+  creativeFileName?: string;
   notes: string;
   tags: string[];
   createdAt: string;

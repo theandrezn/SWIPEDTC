@@ -7,6 +7,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || fallbackSupabaseUrl;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || fallbackSupabasePublishableKey;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const configuredSupabaseUrl = supabaseUrl;
 
 export const supabase = isSupabaseConfigured
   ? createBrowserClient(supabaseUrl, supabaseAnonKey, {

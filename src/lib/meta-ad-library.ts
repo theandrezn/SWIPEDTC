@@ -40,6 +40,7 @@ export function extractMetaPageId(value: string) {
 export async function scrapeMetaAdCount(value: string): Promise<MetaAdCountResult> {
   const url = sanitizeMetaAdLibraryUrl(value);
   if (!url) return unsupportedResult();
+  if (!hasMetaLibraryTarget(url)) return unfilteredLibraryResult(url);
 
   try {
     const response = await fetch(url, {
@@ -68,6 +69,7 @@ export async function scrapeMetaAdCount(value: string): Promise<MetaAdCountResul
 export async function scrapeMetaAdCountWithBrowser(value: string): Promise<MetaAdCountResult> {
   const url = sanitizeMetaAdLibraryUrl(value);
   if (!url) return unsupportedResult();
+  if (!hasMetaLibraryTarget(url)) return unfilteredLibraryResult(url);
 
   if (process.env.NODE_ENV !== "production") return scrapeWithLocalPlaywright(url);
 
@@ -87,13 +89,14 @@ async function getBrowserBinding() {
 }
 
 async function scrapeWithCloudflareBrowser(url: string, browserBinding: BrowserWorker): Promise<MetaAdCountResult> {
-  const browser = await puppeteer.launch(browserBinding);
+  let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
   try {
+    browser = await puppeteer.launch(browserBinding);
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1400, deviceScaleFactor: 1 });
     await page.setUserAgent(requestHeaders()["user-agent"]);
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 45000 });
-    await waitForCloudflareResultsText(page, 20000);
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await waitForCloudflareResultsText(page, 25000);
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2)).catch(() => undefined);
     await delay(2000);
     const screenshot = await page.screenshot({ type: "jpeg", quality: 70, fullPage: false }).catch(() => null);
@@ -106,7 +109,7 @@ async function scrapeWithCloudflareBrowser(url: string, browserBinding: BrowserW
   } catch (error) {
     return errorResult(url, error, "Falha ao abrir a Meta Ads Library com browser.");
   } finally {
-    await browser.close();
+    await browser?.close().catch(() => undefined);
   }
 }
 
@@ -265,6 +268,15 @@ function detectMetaPageProblem(requestUrl: string, finalUrl: string, visibleText
   return null;
 }
 
+function hasMetaLibraryTarget(value: string) {
+  try {
+    const url = new URL(value);
+    return Boolean(url.searchParams.get("view_all_page_id") || url.searchParams.get("page_id") || url.searchParams.get("q"));
+  } catch {
+    return false;
+  }
+}
+
 function safePathname(value: string) {
   try {
     return new URL(value).pathname;
@@ -326,6 +338,17 @@ function unsupportedResult(): MetaAdCountResult {
     pageId: "",
     screenshotUrl: "",
     error: "Use um link publico da Meta Ads Library.",
+  };
+}
+
+function unfilteredLibraryResult(url: string): MetaAdCountResult {
+  return {
+    adCount: null,
+    status: "unsupported",
+    source: "none",
+    pageId: extractMetaPageId(url),
+    screenshotUrl: "",
+    error: "Esse link está genérico. Na Meta Ads Library, pesquise o anunciante ou produto e copie o link que contenha view_all_page_id, page_id ou q.",
   };
 }
 
