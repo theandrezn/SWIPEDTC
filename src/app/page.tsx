@@ -50,7 +50,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   emptyAnalysis,
   emptyFeatures,
@@ -567,13 +567,13 @@ export default function Home() {
     window.setTimeout(() => setToast(""), 2600);
   }
 
-  function upsertSwipe(next: Swipe) {
+  function upsertSwipe(next: Swipe, options?: { silent?: boolean }) {
     const updated = { ...next, updatedAt: new Date().toISOString() };
     setSwipes((current) => current.map((swipe) => (swipe.id === updated.id ? updated : swipe)));
     syncSwipe(updated);
     const latest = updated.adLibrary.snapshots.at(-1);
     if (latest) syncSwipeAdLibrarySnapshot(updated, latest.adCount, latest.source);
-    showToast("Análise atualizada.");
+    if (!options?.silent) showToast("Análise atualizada.");
   }
 
   function createSwipe(swipe: Swipe) {
@@ -716,6 +716,7 @@ export default function Home() {
 
               {selectedSwipe && visibleLibrarySections.includes(activeSection) && (
                 <SwipeDetail
+                  key={`${selectedSwipe.id}-${mode}`}
                   swipe={selectedSwipe}
                   swipes={swipes}
                   onSave={upsertSwipe}
@@ -1512,20 +1513,58 @@ function SwipeDetail({
 }: {
   swipe: Swipe;
   swipes: Swipe[];
-  onSave: (swipe: Swipe) => void;
+  onSave: (swipe: Swipe, options?: { silent?: boolean }) => void;
   onFavorite: (id: string) => void;
   onDelete: (id: string) => void;
   mode: "informacoes" | "metricas";
 }) {
   const [draft, setDraft] = useState(swipe);
-  const [tab, setTab] = useState<"resumo" | "copy" | "metricas" | "funil">("resumo");
+  const [tab, setTab] = useState<"resumo" | "copy" | "metricas" | "funil">(mode === "metricas" ? "metricas" : "resumo");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const draftRef = useRef(swipe);
+  const savedFingerprintRef = useRef(JSON.stringify(swipe));
+  const saveTimerRef = useRef<number | undefined>(undefined);
+  const onSaveRef = useRef(onSave);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      setDraft(swipe);
-      setTab(mode === "metricas" ? "metricas" : "resumo");
-    });
-  }, [mode, swipe]);
+    onSaveRef.current = onSave;
+  }, [onSave]);
+
+  const flushDraft = useCallback((value = draftRef.current) => {
+    const fingerprint = JSON.stringify(value);
+    if (fingerprint === savedFingerprintRef.current) return;
+
+    const persisted = { ...value, updatedAt: new Date().toISOString() };
+    savedFingerprintRef.current = JSON.stringify(persisted);
+    draftRef.current = persisted;
+    onSaveRef.current(persisted, { silent: true });
+  }, []);
+
+  useEffect(() => {
+    draftRef.current = draft;
+    const fingerprint = JSON.stringify(draft);
+    if (fingerprint === savedFingerprintRef.current) return;
+
+    setSaveState("saving");
+    window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      flushDraft(draft);
+      setSaveState("saved");
+    }, 700);
+
+    return () => window.clearTimeout(saveTimerRef.current);
+  }, [draft, flushDraft]);
+
+  useEffect(() => {
+    const saveBeforeExit = () => flushDraft();
+    window.addEventListener("pagehide", saveBeforeExit);
+
+    return () => {
+      window.clearTimeout(saveTimerRef.current);
+      flushDraft();
+      window.removeEventListener("pagehide", saveBeforeExit);
+    };
+  }, [flushDraft]);
 
   const relatedSteps = ["Anúncio", "Advertorial", "Quiz", "Página de vendas", "Checkout", "Upsell"];
   return (
@@ -1561,10 +1600,22 @@ function SwipeDetail({
               <a className="rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/[0.06]" href={draft.url} target="_blank" rel="noreferrer">
                 Abrir Página
               </a>
-              <button onClick={() => onSave(draft)} className="rounded-lg bg-blue-500 px-3 py-2 text-xs font-semibold">
-                Salvar alterações
-              </button>
-              <button onClick={() => onDelete(draft.id)} className="rounded-lg border border-rose-400/20 px-3 py-2 text-xs text-rose-200">
+              <span
+                className={cn(
+                  "px-1 py-2 text-xs",
+                  saveState === "saving" ? "text-cyan-200" : saveState === "saved" ? "text-emerald-300" : "text-slate-500",
+                )}
+              >
+                {saveState === "saving" ? "Salvando..." : saveState === "saved" ? "Salvo" : "Autosave ativo"}
+              </span>
+              <button
+                onClick={() => {
+                  window.clearTimeout(saveTimerRef.current);
+                  savedFingerprintRef.current = JSON.stringify(draftRef.current);
+                  onDelete(draft.id);
+                }}
+                className="rounded-lg border border-rose-400/20 px-3 py-2 text-xs text-rose-200"
+              >
                 Excluir
               </button>
             </div>
