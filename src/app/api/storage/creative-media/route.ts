@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://yugkirleuiqreddxbzis.supabase.co";
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_5WlCiU6ND8vOOngtbyFynQ_ZFcQX7bI";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
