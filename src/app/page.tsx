@@ -1985,6 +1985,17 @@ function getCreativeMediaTypeFromUrl(value: string) {
   return /\.mp4(?:$|[?#])/i.test(value) ? ("video" as const) : ("image" as const);
 }
 
+async function prepareCreativeVideoStorage(accessToken: string) {
+  const response = await fetch("/api/storage/creative-media", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (response.ok) return;
+
+  const data = (await response.json().catch(() => ({}))) as { error?: string };
+  throw new Error(data.error || "Não foi possível preparar o armazenamento para vídeo MP4.");
+}
+
 async function uploadCreativeAsset(file: File, onProgress: (progress: number) => void) {
   const mediaType = getCreativeMediaType(file);
   if (!mediaType) throw new Error("Envie uma imagem PNG, JPG, WEBP, GIF ou um vídeo MP4.");
@@ -1994,6 +2005,8 @@ async function uploadCreativeAsset(file: File, onProgress: (progress: number) =>
   const { data: sessionData } = await supabase.auth.getSession();
   const session = sessionData.session;
   if (!session) throw new Error("Entre novamente para enviar o arquivo.");
+
+  if (mediaType === "video") await prepareCreativeVideoStorage(session.access_token);
 
   const extension = file.name.split(".").pop()?.replace(/[^a-z0-9]/gi, "").toLowerCase() || (mediaType === "video" ? "mp4" : "jpg");
   const filePath = `${session.user.id}/creatives/${createRecordId("creative")}.${extension}`;
