@@ -663,7 +663,7 @@ export default function Home() {
           onFunnel={() => setActiveSection("collections")}
           onMenu={() => setSidebarOpen(true)}
         />
-        <div className="mx-auto w-full max-w-[1540px] px-4 py-5 sm:px-6 lg:px-8">
+        <div className="w-full px-4 py-5 sm:px-6 lg:px-8 2xl:px-10">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeSection}
@@ -1044,7 +1044,7 @@ function TopBar({
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-[#1a2d55] bg-[#030716]/88 shadow-[0_12px_40px_rgba(0,0,0,0.24)] backdrop-blur-xl">
-      <div className="mx-auto flex h-[72px] max-w-[1540px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+      <div className="flex h-[72px] w-full items-center gap-3 px-4 sm:px-6 lg:px-8 2xl:px-10">
         <button className="rounded-lg border border-white/10 p-2 lg:hidden" onClick={onMenu} aria-label="Abrir menu">
           <Menu className="h-5 w-5" />
         </button>
@@ -1180,7 +1180,7 @@ function Dashboard({
         })}
       </div>
       <DashboardFilterToolbar />
-      <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_248px] 2xl:grid-cols-[minmax(0,1fr)_272px]">
         <Panel title="Adicionados recentemente" action="Ver páginas" onAction={() => onSection("Pagina de Venda")}>
           {recent.length > 0 ? (
             <SwipeGrid swipes={recent} onSelect={onSelectSwipe} onFavorite={onFavorite} onDelete={onDelete} compact />
